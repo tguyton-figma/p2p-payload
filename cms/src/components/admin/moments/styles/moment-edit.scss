@@ -1,0 +1,559 @@
+/* ─────────────────────────────────────────────────────────────────────────
+ * Moment Edit View — Body / Main / Navi / Aside grid layout
+ *
+ * Figma spec: 3 zones in a 2×2 CSS Grid (Body).
+ *   Body grid: cols 3fr 1fr │ rows 10fr 1fr
+ *     Main  (col 1, row 1)     → sub-grid: rows 0.25fr 1fr 1fr
+ *     Aside (col 2, row 1)     → Payload sidebar fields
+ *     Navi  (col 1/-1, row 2)  → bottom bar spanning both columns
+ *
+ * Strategy: Flatten Payload's deeply-nested edit-view DOM with
+ * display:contents so our data-attribute elements become direct grid
+ * participants of the Body grid on `main.collection-edit`.
+ *
+ * Verified DOM chain (Payload v3):
+ *   div.template-default__wrap
+ *     .app-header                                       ← hidden
+ *     main.collection-edit                              ← BODY GRID
+ *       form.collection-edit__form                      ← contents
+ *         .doc-controls                                 ← grid item
+ *         .step-nav                                     ← hidden
+ *         .leave-without-saving                         ← fixed
+ *         .collection-edit__main-wrapper                ← contents
+ *           .collection-edit__main                      ← contents
+ *             .document-fields                          ← contents
+ *               .document-fields__main                  ← contents
+ *                 .gutter.document-fields__edit          ← contents
+ *                   .document-fields__fields             ← contents
+ *                     .field-type:has([data-moment-shell]) ← contents
+ *                       [data-moment-shell]              ← GRID ITEM
+ *                       [data-moment-navi]               ← GRID ITEM
+ *                     .field-type (media, uuid)          ← hidden
+ *               .document-fields__sidebar-wrap           ← GRID ITEM
+ * ───────────────────────────────────────────────────────────────────────── */
+
+/* ── Design tokens ────────────────────────────────────────────────────── */
+
+[data-moment-shell] {
+  --body-gap: 0.3vmin;
+  --body-radius: 0.6vmin;
+  --zone-radius: 0.4vmin;
+  --surface-body: oklch(0 0 0);
+  --surface-zone: oklch(0.1 0 0);
+  --surface-navi: oklch(0.08 0 0);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * LAYER 0 — Page-level overrides
+ *
+ * Payload's DefaultTemplate wraps our main inside .template-default__wrap
+ * which also contains AppHeader. We need main to fill the remaining
+ * vertical space after the header, with no overflow.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/* Make the wrap a flex column so main can fill remaining height */
+.template-default__wrap:has([data-moment-shell]) {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+/* Hide AppHeader — we absorb doc-controls into the Aside */
+.template-default__wrap:has([data-moment-shell]) > .app-header {
+  display: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * LAYER 1 — Body grid (main.collection-edit)
+ *
+ * 2-column × 2-row grid per Figma spec.
+ *   Cols: 3fr 1fr   │   Rows: 10fr 1fr
+ *
+ * The 10fr/1fr ratio locks Navi at ~9% of viewport height.
+ * No element can overflow — everything is proportionally constrained.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+main.collection-edit:has([data-moment-shell]) {
+  /* Fill remaining space from Layer 0 flex parent */
+  flex: 1;
+  min-height: 0;
+
+  /* Body grid — proportional columns.
+   * 7fr 3fr gives Aside ~30%. Cmd+B collapses to 9fr 1fr (~10%).
+   * Below ~52rem the responsive breakpoint collapses to single-column. */
+  display: grid;
+  grid-template-columns: 7fr 3fr;
+  grid-template-rows: 1fr fit-content(3rem);
+  gap: var(--body-gap, 0.3vmin);
+  padding: var(--body-gap, 0.3vmin);
+
+  background: var(--surface-body, oklch(0 0 0));
+  border-radius: var(--body-radius, 0.6vmin);
+  width: 100%;
+  overflow: hidden;
+
+  /* Smooth aside open/close (Cmd+B) */
+  transition: grid-template-columns 0.25s ease;
+}
+
+/* Aside collapsed (Cmd+B) — shrink Aside to ~10% */
+main.collection-edit:has([data-moment-shell][data-aside="closed"]) {
+  grid-template-columns: 9fr 1fr;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * LAYER 2 — Flatten Payload wrappers (display: contents)
+ *
+ * Every wrapper between main.collection-edit and our grid items must be
+ * flattened so the items participate directly in the Body grid.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+main.collection-edit:has([data-moment-shell]) {
+  /* Form — direct child of main */
+  & > .collection-edit__form {
+    display: contents;
+  }
+
+  /* Main-wrapper → main → document-fields chain */
+  & .collection-edit__main-wrapper {
+    display: contents;
+  }
+
+  & .collection-edit__main {
+    display: contents;
+  }
+
+  & .document-fields {
+    display: contents;
+  }
+
+  /* Main column + Gutter + RenderFields chain */
+  & .document-fields__main {
+    display: contents;
+  }
+
+  & .document-fields__main > .gutter {
+    display: contents;
+  }
+
+  & .document-fields__main .document-fields__fields {
+    display: contents;
+  }
+}
+
+/* MomentShell's field-type wrapper — flatten so Fragment children are grid items */
+main.collection-edit:has([data-moment-shell]) .document-fields__main .field-type:has([data-moment-shell]) {
+  display: contents;
+}
+
+/* Hide all other main-column fields (media array, uuid, etc.) */
+main.collection-edit:has([data-moment-shell]) .document-fields__main .field-type {
+  display: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * LAYER 3 — Grid items: Main, Aside, Navi
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Main zone (col 1, row 1) ─────────────────────────────────────────── */
+
+[data-moment-shell] {
+  grid-column: 1;
+  grid-row: 1;
+
+  display: grid;
+  grid-template-rows: 0.25fr 1fr 1fr;
+  gap: var(--body-gap, 0.3vmin);
+
+  background: var(--surface-zone, oklch(0.1 0 0));
+  border-radius: var(--zone-radius, 0.4vmin);
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ── Aside zone (col 2, row 1) ────────────────────────────────────────── */
+/* The Aside is a flex column: doc-controls pinned at top, sidebar fields
+ * scroll below. This prevents content flowing behind the save bar. */
+
+main.collection-edit:has([data-moment-shell]) .document-fields__sidebar-wrap {
+  grid-column: 2;
+  grid-row: 1;
+
+  background: var(--surface-zone, oklch(0.1 0 0));
+  border-radius: var(--zone-radius, 0.4vmin);
+  overflow: hidden;
+  min-height: 0;
+
+  /* Reset Payload defaults that conflict with grid sizing */
+  position: static;
+  width: auto;
+  min-width: 0;
+  height: auto;
+  flex-shrink: unset;
+
+  /* Internal layout — doc-controls + fields stack vertically */
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+}
+
+main.collection-edit:has([data-moment-shell]) .document-fields__sidebar {
+  position: static;
+  width: auto;
+  max-width: none;
+  min-height: 0;
+  height: auto;
+  padding: 0.5rem;
+  border: none;
+  margin: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1;
+}
+
+main.collection-edit:has([data-moment-shell]) .document-fields__sidebar-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0;
+}
+
+/* ── Navi zone (col 1/-1, row 2) ──────────────────────────────────────── */
+
+[data-moment-navi] {
+  grid-column: 1 / -1;
+  grid-row: 2;
+
+  background: var(--surface-navi, oklch(0.08 0 0));
+  border-radius: var(--zone-radius, 0.4vmin);
+  overflow: hidden;
+  min-height: 0;
+
+  display: flex;
+  align-items: center;
+  padding: 0.25rem 0.3rem;
+}
+
+[data-navi-dialogue] {
+  flex: 1;
+  font-size: 0.75rem;
+  color: oklch(0.25 0 0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 0.5rem;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * LAYER 4 — Payload chrome overrides
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/* doc-controls (save, timestamps) — pinned at top of Aside, not overlapping.
+ * Pulled out of grid flow into the sidebar-wrap flex column via order. */
+main.collection-edit:has([data-moment-shell]) > .collection-edit__form > .doc-controls {
+  grid-column: 2;
+  grid-row: 1;
+  z-index: 10;
+  align-self: start;
+  position: sticky;
+  top: 0;
+  background: var(--surface-zone, oklch(0.1 0 0));
+  border-radius: var(--zone-radius, 0.4vmin) var(--zone-radius, 0.4vmin) 0 0;
+  padding: 0.4rem 0.5rem;
+  flex-shrink: 0;
+}
+
+/* Step-nav breadcrumb — hidden */
+main.collection-edit:has([data-moment-shell]) > .collection-edit__form > .step-nav {
+  display: none;
+}
+
+/* Leave-without-saving modal wrapper — pull out of grid flow */
+main.collection-edit:has([data-moment-shell]) > .collection-edit__form > .leave-without-saving {
+  position: fixed;
+  z-index: 999;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * LAYER 5 — Sub-zone content styles
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Main sub-zones ───────────────────────────────────────────────────── */
+
+[data-moment-metadata] {
+  min-height: 0;
+  overflow: hidden;
+}
+
+[data-moment-media] {
+  min-height: 0;
+  overflow: hidden;
+}
+
+[data-moment-memories] {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Time instances inherit zone dimensions (defaults are 100%) ─────── */
+
+[data-moment-media] [data-time],
+[data-moment-memories] [data-time] {
+  border-radius: var(--zone-radius, 0.4vmin);
+}
+
+/* ── Panel wrappers (Time + add button) ────────────────────────────── */
+
+[data-media-panel],
+[data-memories-panel] {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Shared add button — subtle "+" anchored to the panel corner */
+[data-add-media-btn],
+[data-add-memory-btn] {
+  appearance: none;
+  position: absolute;
+  z-index: 5;
+  border: 1px solid oklch(0.25 0 0);
+  background: oklch(0.1 0 0 / 0.85);
+  color: oklch(0.55 0 0);
+  font-size: 0.875rem;
+  line-height: 1;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+
+  &:hover {
+    border-color: oklch(0.45 0 0);
+    color: oklch(0.8 0 0);
+    background: oklch(0.15 0 0 / 0.9);
+  }
+}
+
+[data-add-media-btn] {
+  bottom: 0.4rem;
+  right: 0.4rem;
+}
+
+[data-add-memory-btn] {
+  top: 0.4rem;
+  right: 0.4rem;
+}
+
+/* ── Zone placeholders (empty states + add triggers) ──────────────── */
+
+[data-moment-zone-placeholder] {
+  border-radius: var(--zone-radius, 0.4vmin);
+  display: grid;
+  place-items: center;
+  height: 100%;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  background: oklch(0.08 0 0);
+  color: oklch(0.3 0 0);
+  border: none;
+  cursor: default;
+}
+
+/* Clickable placeholders (add media / add memory) */
+button[data-moment-zone-placeholder] {
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+
+  &:hover:not(:disabled) {
+    color: oklch(0.5 0 0);
+    background: oklch(0.1 0 0);
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+}
+
+/* ── Memory cell content ──────────────────────────────────────────────── */
+
+[data-memory-cell] {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.5rem;
+  width: 100%;
+  justify-content: flex-start;
+  flex-direction: row;
+}
+
+[data-memory-type] {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: oklch(0.7 0 0);
+  flex-shrink: 0;
+}
+
+[data-memory-time] {
+  font-size: 0.625rem;
+  color: oklch(0.45 0 0);
+  flex-shrink: 0;
+}
+
+[data-memory-origin] {
+  font-size: 0.625rem;
+  color: oklch(0.4 0 0);
+  margin-left: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+[data-moment-memories] [data-cell] [data-cell-content] {
+  justify-content: center;
+  padding: 0.25rem 0.5rem;
+}
+
+/* ── Navi tools (symbol indicators) ───────────────────────────────────── */
+
+[data-navi-tools] {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+  padding-right: 0.25rem;
+}
+
+[data-navi-symbol] {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  opacity: 0.8;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+[data-navi-symbol][data-symbol-state="active"] {
+  animation: navi-pulse 1.2s ease-in-out infinite;
+}
+
+[data-navi-symbol][data-symbol-state="resting"] {
+  opacity: 0.4;
+}
+
+[data-navi-symbol][data-symbol-state="error"] {
+  opacity: 0.9;
+  box-shadow: 0 0 0.2rem oklch(0.5 0.2 25 / 0.5);
+}
+
+@keyframes navi-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.2); opacity: 1; }
+}
+
+/* ── MetadataStrip ────────────────────────────────────────────────────── */
+
+[data-metadata-strip] {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.75rem;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: oklch(0.1 0 0);
+  border-radius: var(--zone-radius, 0.4vmin);
+}
+
+[data-metadata-name] {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: oklch(0.85 0 0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+[data-metadata-time] {
+  font-size: 0.6875rem;
+  color: oklch(0.5 0 0);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+[data-metadata-badges] {
+  display: flex;
+  gap: 0.375rem;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+[data-metadata-badge] {
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.2rem;
+  background: oklch(0.15 0 0 / 0.7);
+  white-space: nowrap;
+}
+
+[data-metadata-paint] {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── Responsive: collapse to single column early ──────────────── */
+/* Switch as soon as things feel even barely cramped. At 52rem the
+ * aside clamp(14rem) would leave only ~38rem for Main — too tight
+ * for the Time grids to be useful. Collapse generously. */
+
+@media (max-width: 52rem) {
+  main.collection-edit:has([data-moment-shell]) {
+    grid-template-columns: 1fr;
+    grid-template-rows: 7fr 3fr fit-content(3rem);
+
+    /* Smooth aside open/close (Cmd+B) — vertical axis */
+    transition: grid-template-rows 0.25s ease;
+  }
+
+  /* Aside collapsed (Cmd+B) — shrink Aside row, expand Main */
+  main.collection-edit:has([data-moment-shell][data-aside="closed"]) {
+    grid-template-columns: 1fr;
+    grid-template-rows: 9fr 1fr fit-content(3rem);
+  }
+
+  [data-moment-shell] {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  main.collection-edit:has([data-moment-shell]) .document-fields__sidebar-wrap {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  main.collection-edit:has([data-moment-shell]) > .collection-edit__form > .doc-controls {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  [data-moment-navi] {
+    grid-column: 1;
+    grid-row: 3;
+  }
+}

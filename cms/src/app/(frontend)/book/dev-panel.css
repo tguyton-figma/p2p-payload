@@ -1,0 +1,201 @@
+/* Dev panel — fixed bottom-center, OKLCH monochrome, matches project palette */
+
+[data-dev-panel] {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  right: 20px;
+  z-index: 9999;
+
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px 6px;
+  padding: 8px 14px;
+  max-width: max-content;
+  margin: 0 auto;
+
+  background: oklch(0.10 0 0 / 0.92);
+  border: 1px solid oklch(0.28 0 0);
+  border-radius: 12px;
+  backdrop-filter: blur(12px);
+
+  font-family: 'Roboto Mono', monospace;
+  font-size: 11px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+/* ── Sections ── */
+
+[data-dev-section] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+[data-dev-divider] {
+  width: 1px;
+  height: 20px;
+  background: oklch(0.24 0 0);
+  flex-shrink: 0;
+}
+
+[data-dev-eyebrow] {
+  color: oklch(0.38 0 0);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+/* ── Moment buttons ── */
+
+[data-dev-buttons] {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+[data-dev-buttons] button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: oklch(0.45 0 0);
+  font: inherit;
+  cursor: pointer;
+  padding: 3px 7px;
+  border-radius: 999px;
+  transition: color 120ms ease, background 120ms ease;
+  line-height: 1;
+  min-width: 24px;
+  text-align: center;
+}
+
+[data-dev-buttons] button:hover {
+  color: oklch(0.75 0 0);
+  background: oklch(0.20 0 0);
+}
+
+[data-dev-buttons] button[data-active] {
+  color: oklch(0.96 0 0);
+  background: oklch(0.30 0 0);
+}
+
+/* ── Sliders ── */
+
+[data-dev-slider] {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: default;
+}
+
+[data-dev-slider-label] {
+  color: oklch(0.50 0 0);
+  min-width: 28px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+[data-dev-slider] input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 60px;
+  height: 4px;
+  background: oklch(0.25 0 0);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+[data-dev-slider] input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: oklch(0.70 0 0);
+  cursor: pointer;
+  border: none;
+}
+
+[data-dev-slider] input[type="range"]::-webkit-slider-thumb:hover {
+  background: oklch(0.90 0 0);
+}
+
+[data-dev-slider-value] {
+  color: oklch(0.62 0 0);
+  min-width: 38px;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Select dropdown ── */
+
+[data-dev-select] {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: default;
+}
+
+[data-dev-select] select {
+  appearance: none;
+  background: oklch(0.18 0 0);
+  color: oklch(0.62 0 0);
+  font: inherit;
+  font-size: 10px;
+  border: 1px solid oklch(0.28 0 0);
+  border-radius: 4px;
+  padding: 2px 6px;
+  cursor: pointer;
+  outline: none;
+}
+
+[data-dev-select] select:hover {
+  border-color: oklch(0.40 0 0);
+}
+
+/* ── FPS indicator ── */
+
+[data-dev-fps] {
+  color: oklch(0.55 0.15 145);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+[data-dev-fps][data-fps-warn] {
+  color: oklch(0.60 0.20 30);
+}
+
+[data-dev-load] {
+  color: oklch(0.55 0.15 145);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+[data-dev-load][data-load-warn] {
+  color: oklch(0.60 0.20 30);
+}
+
+/* ── Reset button ── */
+
+[data-dev-reset] {
+  appearance: none;
+  border: 1px solid oklch(0.28 0 0);
+  background: transparent;
+  color: oklch(0.45 0 0);
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 4px;
+  transition: color 120ms ease, border-color 120ms ease;
+  flex-shrink: 0;
+}
+
+[data-dev-reset]:hover {
+  color: oklch(0.75 0 0);
+  border-color: oklch(0.40 0 0);
+}

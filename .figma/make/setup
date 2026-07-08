@@ -1,0 +1,22 @@
+#!/bin/bash
+set -e
+
+echo "Checking system dependencies..."
+
+# Node.js
+NODE_VERSION="$(node --version 2>/dev/null || echo "none")"
+if [[ "$NODE_VERSION" == "none" ]]; then
+  echo "Error: Node.js is required (^18.20.2 || >=20.9.0)"
+  exit 1
+fi
+echo "Node $NODE_VERSION OK"
+
+# pnpm
+PNPM_VERSION="$(pnpm --version 2>/dev/null || echo "none")"
+if [[ "$PNPM_VERSION" == "none" ]]; then
+  echo "Installing pnpm..."
+  npm install -g pnpm
+fi
+echo "pnpm $(pnpm --version) OK"
+
+echo "System dependencies verified."

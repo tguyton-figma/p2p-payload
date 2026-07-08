@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# IDE / Editor
+/.idea/*
+!/.idea/runConfigurations
+.DS_Store
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment
+.env
+.env*.local
+
+# === CMS (Node.js / Next.js / Payload) ===
+cms/.next/
+cms/out/
+cms/build/
+cms/media/
+cms/lambda.zip
+cms/coverage/
+cms/test-results/
+cms/playwright-report/
+cms/blob-report/
+cms/playwright/.cache/
+*.tsbuildinfo
+*.pem
+next-env.d.ts
+
+# Claude memory (personal context)
+.claude/projects/

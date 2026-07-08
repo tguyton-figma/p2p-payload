@@ -1,0 +1,197 @@
+/* Time — 7-cell CSS Grid carousel, attribute-driven, OKLCH paint system */
+
+[data-time] {
+  /* ── Tunable tokens (overridden by dev panel via inline style) ── */
+  --time-duration: 300ms;
+  --time-easing: cubic-bezier(0.25, 1, 0.5, 1);
+  --time-gap: 0.9vmin;
+  --time-padding: 0.9vmin;
+  --time-radius: 1.1vmin;
+  --cell-radius: 0.7vmin;
+  --cell-l-base: 0.15;
+  --cell-l-0: 0.85;
+  --cell-l-1: 0.55;
+  --cell-l-2: 0.35;
+  --cell-l-3: 0.20;
+
+  display: grid;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: black;
+  padding: var(--time-padding);
+  gap: var(--time-gap);              /* fit mode (≤7): gap between all tracks */
+  border-radius: var(--time-radius);
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+  transition: grid-template-columns var(--time-duration) var(--time-easing),
+              grid-template-rows    var(--time-duration) var(--time-easing);
+}
+
+[data-time][data-dragging] {
+  cursor: grabbing;
+}
+
+/* ── Carousel gap strategy ─────────────────────────────────────────────────── */
+/* In carousel mode (n > 7), CSS gap accumulates across hundreds of 0fr tracks.
+   Disable container gap and apply spacing via margins on visible cells only. */
+[data-time][data-carousel] {
+  gap: 0;
+}
+
+/* Horizontal carousel: inline margin on visible cells */
+[data-time][data-carousel][data-direction="x"] [data-cell][data-position="0"],
+[data-time][data-carousel][data-direction="x"] [data-cell][data-position="1"],
+[data-time][data-carousel][data-direction="x"] [data-cell][data-position="-1"],
+[data-time][data-carousel][data-direction="x"] [data-cell][data-position="2"],
+[data-time][data-carousel][data-direction="x"] [data-cell][data-position="-2"],
+[data-time][data-carousel][data-direction="x"] [data-cell][data-position="3"],
+[data-time][data-carousel][data-direction="x"] [data-cell][data-position="-3"] {
+  margin-inline: calc(var(--time-gap) / 2);
+}
+
+/* Vertical carousel: block margin on visible cells */
+[data-time][data-carousel][data-direction="y"] [data-cell][data-position="0"],
+[data-time][data-carousel][data-direction="y"] [data-cell][data-position="1"],
+[data-time][data-carousel][data-direction="y"] [data-cell][data-position="-1"],
+[data-time][data-carousel][data-direction="y"] [data-cell][data-position="2"],
+[data-time][data-carousel][data-direction="y"] [data-cell][data-position="-2"],
+[data-time][data-carousel][data-direction="y"] [data-cell][data-position="3"],
+[data-time][data-carousel][data-direction="y"] [data-cell][data-position="-3"] {
+  margin-block: calc(var(--time-gap) / 2);
+}
+
+/* Grid templates are set via inline style in Time.tsx (dynamic cell count). */
+
+/* Empty state */
+[data-no-moments] {
+  display: grid;
+  place-items: center;
+  color: oklch(0.35 0 0);
+}
+
+/* ── Cell ──────────────────────────────────────────────────────────────────────── */
+
+[data-cell] {
+  /*
+   * Paint triplet: defaults to neutral dark (monochrome fallback) until
+   * the Moment's paint values are received via inline style.
+   */
+  --paint-l: 0.15;
+  --paint-c: 0;
+  --paint-h: 0;
+  --paint-dim: 0.15;   /* fraction, e.g. 15% */
+  --paint-lit: 0.15;   /* fraction, e.g. 15% */
+
+  /*
+   * Position-scaled lightness: the base paint-l is modulated by the
+   * per-position scale factor so that the focused cell is at its full
+   * paint brightness and edge cells recede.
+   */
+  --cell-l-scale: var(--cell-l-base);
+  --cell-l-computed: min(1, calc(var(--paint-l) * var(--cell-l-scale) / var(--cell-l-base)));
+
+  appearance: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+  border-radius: var(--cell-radius);
+  /* Paint color: hue + chroma from the moment, lightness scaled by position */
+  background: oklch(var(--cell-l-computed) var(--paint-c) var(--paint-h));
+  color: oklch(0.95 0 0);
+  font: inherit;
+  cursor: pointer;
+  transition: background var(--time-duration) var(--time-easing);
+  /* Relative so media can be absolutely positioned; grid for content overlay */
+  position: relative;
+  display: grid;
+  grid-template: 1fr / 1fr;
+}
+
+[data-cell][data-empty] {
+  cursor: default;
+  pointer-events: none;
+}
+
+/* Position → lightness scale: center at full paint brightness, edges dim */
+[data-cell][data-position="0"]  { --cell-l-scale: var(--cell-l-0); }
+[data-cell][data-position="1"],
+[data-cell][data-position="-1"] { --cell-l-scale: var(--cell-l-1); }
+[data-cell][data-position="2"],
+[data-cell][data-position="-2"] { --cell-l-scale: var(--cell-l-2); }
+[data-cell][data-position="3"],
+[data-cell][data-position="-3"] { --cell-l-scale: var(--cell-l-3); }
+
+/* Hover: brighten using paint-lit flag */
+[data-cell]:not([data-empty]):hover {
+  background: oklch(
+    min(1, calc(var(--cell-l-computed) + var(--paint-lit)))
+    var(--paint-c)
+    var(--paint-h)
+  );
+}
+
+/* Active/focus: dim using paint-dim flag */
+[data-cell]:not([data-empty]):active {
+  background: oklch(
+    max(0, calc(var(--cell-l-computed) - var(--paint-dim)))
+    var(--paint-c)
+    var(--paint-h)
+  );
+}
+
+/* ── Media fill ────────────────────────────────────────────────────────────────── */
+
+/* Image and video: fill the entire cell, object-fit cover */
+[data-paint-image],
+[data-paint-video] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+}
+
+/* Audio waveform: fill cell, sits behind cell content */
+[data-paint-waveform] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.6;
+  transition: opacity var(--time-duration) var(--time-easing);
+}
+
+[data-cell][data-position="0"] [data-paint-waveform] {
+  opacity: 1;
+}
+
+/* ── Cell content overlay ────────────────────────────────────────────────────── */
+
+[data-cell-content] {
+  grid-area: 1 / 1;
+  z-index: 1;
+  overflow: hidden;
+  padding: 0.5em;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  /* Subtle text shadow to stay readable over any paint color */
+  text-shadow: 0 1px 3px oklch(0 0 0 / 0.4);
+}
+
+[data-cell-title] {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+

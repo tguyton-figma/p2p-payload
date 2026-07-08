@@ -1,0 +1,7 @@
+#!/bin/bash
+set -e
+
+cd cms
+echo "Installing project dependencies..."
+pnpm install
+echo "Dependencies installed."
