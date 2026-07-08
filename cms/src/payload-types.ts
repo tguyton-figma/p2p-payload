@@ -76,8 +76,6 @@ export interface Config {
     moments: Moment;
     memories: Memory;
     sessions: Session;
-    signals: Signal;
-    participants: Participant;
     'payload-kv': PayloadKv;
     'payload-jobs': PayloadJob;
     'payload-locked-documents': PayloadLockedDocument;
@@ -95,8 +93,6 @@ export interface Config {
     moments: MomentsSelect<false> | MomentsSelect<true>;
     memories: MemoriesSelect<false> | MemoriesSelect<true>;
     sessions: SessionsSelect<false> | SessionsSelect<true>;
-    signals: SignalsSelect<false> | SignalsSelect<true>;
-    participants: ParticipantsSelect<false> | ParticipantsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-jobs': PayloadJobsSelect<false> | PayloadJobsSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
@@ -554,58 +550,6 @@ export interface Session {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "signals".
- */
-export interface Signal {
-  id: string;
-  /**
-   * ID of the session this signal belongs to.
-   */
-  session: string;
-  /**
-   * Peer ID that sent this signal.
-   */
-  from: string;
-  /**
-   * Peer ID this signal is addressed to.
-   */
-  to: string;
-  kind: 'offer' | 'answer' | 'candidate';
-  /**
-   * SDP description or a single ICE candidate.
-   */
-  data?:
-    | {
-        [k: string]: unknown;
-      }
-    | unknown[]
-    | string
-    | number
-    | boolean
-    | null;
-  updatedAt: string;
-  createdAt: string;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "participants".
- */
-export interface Participant {
-  id: string;
-  /**
-   * ID of the session this participant belongs to.
-   */
-  session: string;
-  peerId: string;
-  /**
-   * Epoch ms of the last heartbeat.
-   */
-  lastSeen: number;
-  updatedAt: string;
-  createdAt: string;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -755,14 +699,6 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'sessions';
         value: string | Session;
-      } | null)
-    | ({
-        relationTo: 'signals';
-        value: string | Signal;
-      } | null)
-    | ({
-        relationTo: 'participants';
-        value: string | Participant;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -1023,30 +959,6 @@ export interface MemoriesSelect<T extends boolean = true> {
  */
 export interface SessionsSelect<T extends boolean = true> {
   status?: T;
-  updatedAt?: T;
-  createdAt?: T;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "signals_select".
- */
-export interface SignalsSelect<T extends boolean = true> {
-  session?: T;
-  from?: T;
-  to?: T;
-  kind?: T;
-  data?: T;
-  updatedAt?: T;
-  createdAt?: T;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "participants_select".
- */
-export interface ParticipantsSelect<T extends boolean = true> {
-  session?: T;
-  peerId?: T;
-  lastSeen?: T;
   updatedAt?: T;
   createdAt?: T;
 }

@@ -1,16 +1,14 @@
 import type { CollectionConfig } from 'payload'
 
 /**
- * Sessions — the anchor for a 1:1 WebRTC call.
+ * Sessions — domain anchor for a live A/V session (see ADR-0001).
  *
- * Signaling messages (offer / answer / ICE candidates) do NOT live here — they
- * are append-only rows in the `signals` collection, one document per message.
- * Writing each signal as its own insert avoids the lost-update race that a
- * shared, repeatedly-updated document suffers under Payload's read-modify-write
- * update semantics.
- *
- * Media never touches the server: once the handshake completes, audio/video
- * flows directly peer-to-peer.
+ * Realtime media and signaling are handled entirely by LiveKit (the SFU); this
+ * collection is the CMS-side record of a session, intended to map to a LiveKit
+ * room and link it to a Moment, participating Accounts, and the resulting
+ * Recording. That domain wiring is not built yet — for now the row is just a
+ * lifecycle anchor. Rooms are currently keyed by name at join time and no
+ * Session document is created automatically.
  */
 export const Sessions: CollectionConfig = {
   slug: 'sessions',

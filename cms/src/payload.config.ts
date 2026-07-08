@@ -10,8 +10,6 @@ import { Accounts } from './collections/Accounts'
 import { Moments } from './collections/Moments'
 import { Memories } from './collections/Memories'
 import { Sessions } from './collections/Sessions'
-import { Signals } from './collections/Signals'
-import { Participants } from './collections/Participants'
 import { enrichMediaTask } from './jobs/enrichMedia'
 import { recorderUpload } from './endpoints/recorder/upload'
 import { recorderUploadUrl } from './endpoints/recorder/upload-url'
@@ -35,7 +33,7 @@ export default buildFigmaConfig({
       ],
     },
   },
-  collections: [Users, Media, Timelines, Recordings, Logs, Accounts, Moments, Memories, Sessions, Signals, Participants],
+  collections: [Users, Media, Timelines, Recordings, Logs, Accounts, Moments, Memories, Sessions],
   endpoints: [
     recorderUpload,
     recorderUploadUrl,
