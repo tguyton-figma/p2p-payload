@@ -1,8 +1,10 @@
 # p2p-payload
 
-WebRTC P2P realtime audio/video streaming system powered by Payload CMS on Figma Cloud.
+Realtime audio/video streaming platform powered by Payload CMS on Figma Cloud, with LiveKit for the
+live media layer.
 
-A creative media platform featuring live, low-latency P2P sessions between participants with seamless recording and persistence into a timeline, moments, and memories system.
+A creative media platform featuring live, low-latency sessions between participants with seamless
+recording and persistence into a timeline, moments, and memories system.
 
 ## Quick Start
 
@@ -24,9 +26,12 @@ Prod: https://p2p-payload.figma.site
 
 ## Architecture
 
-- **Phase 1 (MVP):** P2P WebRTC mesh for 1:1 sessions via SSE signaling
-- **Phase 2 (Groups):** LiveKit SFU for 3–10 participant sessions
-- See [RFC-001](./docs/rfc-001-webrtc-p2p-streaming.md) for the full streaming architecture
+- **Realtime A/V:** LiveKit (SFU) — many-to-many 1–10 participants. The CMS mints short-lived
+  LiveKit access tokens; LiveKit owns signaling, forwarding, and reconnection.
+- **Recording:** client-side capture into the existing `upload-url` → `finalize` →
+  `finalize-session` media pipeline.
+- See [ADR-0001](./docs/adr/0001-livekit-sfu-for-realtime-av.md) for the decision and rationale, and
+  [RFC-001](./docs/rfc-001-webrtc-p2p-streaming.md) for background (superseded in part).
 
 ## Collections
 
@@ -38,7 +43,7 @@ Prod: https://p2p-payload.figma.site
 - **Moments:** Events/exhibits with OKLCH paint system
 - **Memories:** Activity log/chat tied to moments
 - **Logs:** Append-only structured events
-- **Sessions:** Active/ended P2P/SFU streaming sessions (Phase 1)
+- **Sessions:** Domain anchor for a live A/V session — maps to a LiveKit room, links Moment ↔ Account(s) ↔ Recording
 
 ## Resources
 

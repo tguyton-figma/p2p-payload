@@ -1,8 +1,16 @@
 # RFC-001: WebRTC P2P Realtime Audio/Video Streaming
 
-**Status:** Draft
+**Status:** Superseded in part by [ADR-0001](./adr/0001-livekit-sfu-for-realtime-av.md)
 **Created:** 2026-07-07
 **Author:** p2p-payload
+
+> **Note (2026-07-08):** The transport decisions in this RFC — full-mesh P2P, SSE/DB-poll
+> signaling, and a standalone Deno signaling server — have been superseded by **ADR-0001**, which
+> adopts **LiveKit (SFU)** as the media plane. The mesh caps out at ~5 participants (a topology
+> limit, not a signaling one); LiveKit delivers the many-to-many 1–10 goal directly. The motivation,
+> the reuse of Accounts/Media/Recordings, the recording flow (Phase 1B), and the domain model
+> (`Sessions` anchoring Moments/Accounts/Recordings) still hold. Read this RFC for background and
+> ADR-0001 for the current architecture.
 
 ---
 
