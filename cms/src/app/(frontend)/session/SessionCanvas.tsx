@@ -16,7 +16,6 @@ import { ConnectionState, Track } from 'livekit-client'
 import type { DisconnectReason } from 'livekit-client'
 import {
   Background,
-  Controls,
   Panel,
   ReactFlow,
   ReactFlowProvider,
@@ -157,7 +156,6 @@ function CanvasFlow() {
   // `send` lives in a ref so the message handler can reply to `request` without
   // creating a circular dependency with useDataChannel (which takes the handler).
   const sendRef = useRef<((p: Uint8Array, o: { reliable: boolean }) => Promise<void>) | null>(null)
-  const hadNodesRef = useRef(false)
 
   // --- data channel: broadcast local moves, apply remote moves, answer late joiners ---
   const handleMessage = useCallback(
@@ -230,16 +228,30 @@ function CanvasFlow() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackSig, setNodes])
 
-  // Fit the view once the first tiles are measured. Gating on nodesInitialized
-  // (rather than a bare rAF) guarantees the nodes have real dimensions, so
-  // fitView can actually compute bounds and bring them into view.
+  // Auto-fit camera: keep every tile framed in the viewport, re-fitting whenever
+  // the canvas geometry settles — a participant joins/leaves, a drag ends, or a
+  // remote move arrives. We skip fitting while a node is actively being dragged
+  // (that would fight the user), and gate on nodesInitialized so tiles have real
+  // measured sizes before we compute bounds.
   const nodesInitialized = useNodesInitialized()
+  const anyDragging = nodes.some((n) => n.dragging)
+  const geomSig = nodes
+    .map((n) => `${n.id}@${Math.round(n.position.x)},${Math.round(n.position.y)}`)
+    .join('|')
+  const fitOpts = { maxZoom: 1, padding: 0.15, duration: 250 }
   useEffect(() => {
-    if (!hadNodesRef.current && nodesInitialized && nodes.length > 0) {
-      hadNodesRef.current = true
-      fitView({ maxZoom: 1, padding: 0.2 })
-    }
-  }, [nodesInitialized, nodes.length, fitView])
+    if (!nodesInitialized || nodes.length === 0 || anyDragging) return
+    fitView(fitOpts)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [geomSig, nodesInitialized, anyDragging, fitView])
+
+  // Re-fit when the viewport itself resizes (window/panel size changes).
+  useEffect(() => {
+    const onResize = () => fitView(fitOpts)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitView])
 
   // --- broadcast local drags ---
   const onNodesChangeSync = useCallback(
@@ -261,13 +273,20 @@ function CanvasFlow() {
       nodes={nodes}
       nodeTypes={nodeTypes}
       onNodesChange={onNodesChangeSync}
-      minZoom={0.25}
-      maxZoom={2}
+      minZoom={0.1}
+      maxZoom={1.5}
+      // The camera is automatic — disable free pan/zoom so it never fights the
+      // auto-fit. Tiles stay draggable (that drives the shared layout).
+      panOnDrag={false}
+      panOnScroll={false}
+      zoomOnScroll={false}
+      zoomOnPinch={false}
+      zoomOnDoubleClick={false}
+      nodesConnectable={false}
       proOptions={{ hideAttribution: true }}
       className="session-canvas__flow"
     >
       <Background gap={24} color="#1f1f1f" />
-      <Controls showInteractive={false} />
       <Panel position="top-right">
         <SessionControls />
       </Panel>
