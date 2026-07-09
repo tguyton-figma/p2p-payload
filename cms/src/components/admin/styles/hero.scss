@@ -393,6 +393,63 @@
   }
 }
 
+/* Session recording player + copy-link row */
+
+.recording-player {
+  margin-bottom: var(--base);
+}
+
+.recording-player__placeholder {
+  padding: 32px 12px;
+  font-size: 0.8125rem;
+  color: var(--theme-elevation-400);
+  text-align: center;
+}
+
+.recording-player__link {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.recording-player__url {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  font-size: 0.75rem;
+  font-family: var(--font-mono, monospace);
+  border: 1px solid var(--theme-elevation-150);
+  border-radius: var(--border-radius-m);
+  background: var(--theme-elevation-50);
+  color: var(--theme-elevation-800);
+  box-sizing: border-box;
+
+  &:focus {
+    outline: none;
+    border-color: var(--theme-elevation-400);
+  }
+}
+
+.recording-player__copy {
+  appearance: none;
+  border: 1px solid var(--theme-elevation-250);
+  border-radius: var(--border-radius-m);
+  background: transparent;
+  color: var(--theme-elevation-700);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 6px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: border-color 0.12s ease, color 0.12s ease;
+
+  &:hover {
+    border-color: var(--theme-elevation-400);
+    color: var(--theme-text);
+  }
+}
+
 /* Moment hero cover-ready prompt */
 
 .hero-card__prompt {

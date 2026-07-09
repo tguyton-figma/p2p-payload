@@ -56,6 +56,17 @@ export const SessionRecordings: CollectionConfig = {
       },
     },
     {
+      // Inline player + copy-production-link button for the recorded file.
+      name: 'preview',
+      type: 'ui',
+      admin: {
+        condition: (data) => Boolean(data?.video),
+        components: {
+          Field: '/components/admin/SessionRecordingPlayer#SessionRecordingPlayer',
+        },
+      },
+    },
+    {
       name: 'host',
       type: 'relationship',
       relationTo: 'accounts',

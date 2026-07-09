@@ -27,6 +27,7 @@ import { BoldFeatureClient as BoldFeatureClient_e70f5e05f09f93e00b997edb1ef0c864
 import { ItalicFeatureClient as ItalicFeatureClient_e70f5e05f09f93e00b997edb1ef0c864 } from '@payloadcms/richtext-lexical/client'
 import { MomentShell as MomentShell_590c7debb1b1d6db7f941f61d5d26c5b } from '../../../components/admin/moments/MomentShell'
 import { SlugField as SlugField_2b8867833a34864a02ddf429b0728a40 } from '@payloadcms/next/client'
+import { SessionRecordingPlayer as SessionRecordingPlayer_86132ef3a6e2ba8fb09ffe19ec4079db } from '../../../components/admin/SessionRecordingPlayer'
 import { FigmaAvatar as FigmaAvatar_5b632879807206965a35b58cd5166e1c } from '@payloadcms/figma/client'
 import { SonnerBridge as SonnerBridge_05dee3fea806491fd99e539f0de093c1 } from '../../../components/admin/SonnerBridge'
 import { NotificationStream as NotificationStream_c703a8f6ba8f8d740c12bf5765aaf0f5 } from '../../../components/admin/NotificationStream'
@@ -65,6 +66,7 @@ export const importMap = {
   "@payloadcms/richtext-lexical/client#ItalicFeatureClient": ItalicFeatureClient_e70f5e05f09f93e00b997edb1ef0c864,
   "/components/admin/moments/MomentShell#MomentShell": MomentShell_590c7debb1b1d6db7f941f61d5d26c5b,
   "@payloadcms/next/client#SlugField": SlugField_2b8867833a34864a02ddf429b0728a40,
+  "/components/admin/SessionRecordingPlayer#SessionRecordingPlayer": SessionRecordingPlayer_86132ef3a6e2ba8fb09ffe19ec4079db,
   "@payloadcms/figma/client#FigmaAvatar": FigmaAvatar_5b632879807206965a35b58cd5166e1c,
   "/components/admin/SonnerBridge#SonnerBridge": SonnerBridge_05dee3fea806491fd99e539f0de093c1,
   "/components/admin/NotificationStream#NotificationStream": NotificationStream_c703a8f6ba8f8d740c12bf5765aaf0f5,
