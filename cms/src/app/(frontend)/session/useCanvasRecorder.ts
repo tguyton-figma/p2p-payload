@@ -285,6 +285,9 @@ export function useCanvasRecorder(
     const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
     const ctx = new AudioCtx()
     audioCtxRef.current = ctx
+    // start() runs inside the host's click, so resuming here is allowed —
+    // without it the context can stay suspended and record silent audio.
+    void ctx.resume().catch(() => {})
     audioDestRef.current = ctx.createMediaStreamDestination()
     collectAudio()
     lkRoom.on(RoomEvent.TrackSubscribed, onTrackSubscribed)
