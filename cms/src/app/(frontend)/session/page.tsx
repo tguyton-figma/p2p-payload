@@ -1,28 +1,32 @@
 'use client'
 
 import { useCallback, useState } from 'react'
-import { LiveKitRoom, VideoConference } from '@livekit/components-react'
+import { LiveKitRoom, PreJoin, VideoConference } from '@livekit/components-react'
+import type { LocalUserChoices } from '@livekit/components-react'
 import '@livekit/components-styles'
 import './session.css'
 
-// A live session is a LiveKit room. We fetch a short-lived, room-scoped access
-// token from our own /api/livekit/token endpoint (which also returns the server
-// URL, so no public env var is needed), then hand it to <LiveKitRoom>. LiveKit's
-// SFU handles signaling, media forwarding, and reconnection — this replaces the
-// old hand-rolled P2P mesh, and scales to many-to-many (1-10) without the mesh
-// fan-out cap.
+// A live session is a LiveKit room. Flow: pick/create a room -> pre-join
+// (set a display name, preview camera/mic) -> connect. We fetch a short-lived,
+// room-scoped access token from our own /api/livekit/token endpoint (which also
+// returns the server URL, so no public env var is needed), then hand it to
+// <LiveKitRoom>. LiveKit's SFU handles signaling, media forwarding, and
+// reconnection, scaling to many-to-many (1-10) without a mesh fan-out cap.
+
+type Phase = 'idle' | 'prejoin' | 'connected'
 
 interface Connection {
   room: string
   token: string
   url: string
+  choices: LocalUserChoices
 }
 
-async function fetchToken(room: string): Promise<{ token: string; url: string }> {
+async function fetchToken(room: string, name: string): Promise<{ token: string; url: string }> {
   const res = await fetch('/api/livekit/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ room }),
+    body: JSON.stringify({ room, name }),
   })
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string }
@@ -32,32 +36,45 @@ async function fetchToken(room: string): Promise<{ token: string; url: string }>
 }
 
 export default function SessionPage() {
-  const [connection, setConnection] = useState<Connection | null>(null)
+  const [phase, setPhase] = useState<Phase>('idle')
+  const [room, setRoom] = useState('')
   const [joinId, setJoinId] = useState('')
+  const [connection, setConnection] = useState<Connection | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [connecting, setConnecting] = useState(false)
 
-  const connect = useCallback(async (room: string) => {
+  const toPrejoin = useCallback((r: string) => {
+    setRoom(r)
     setError(null)
-    setConnecting(true)
-    try {
-      const { token, url } = await fetchToken(room)
-      setConnection({ room, token, url })
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not join the room.')
-    } finally {
-      setConnecting(false)
-    }
+    setPhase('prejoin')
   }, [])
 
   // Start a new call with a short random room name; anyone with the name can join.
-  const createRoom = useCallback(() => void connect(crypto.randomUUID().slice(0, 8)), [connect])
+  const createRoom = useCallback(() => toPrejoin(crypto.randomUUID().slice(0, 8)), [toPrejoin])
   const joinRoom = useCallback(() => {
     const id = joinId.trim()
-    if (id) void connect(id)
-  }, [connect, joinId])
+    if (id) toPrejoin(id)
+  }, [joinId, toPrejoin])
 
-  if (connection) {
+  const onPreJoinSubmit = useCallback(
+    async (choices: LocalUserChoices) => {
+      setError(null)
+      try {
+        const { token, url } = await fetchToken(room, choices.username)
+        setConnection({ room, token, url, choices })
+        setPhase('connected')
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Could not join the room.')
+      }
+    },
+    [room],
+  )
+
+  const leave = useCallback(() => {
+    setConnection(null)
+    setPhase('idle')
+  }, [])
+
+  if (phase === 'connected' && connection) {
     return (
       <div className="session session--live">
         <header className="session__bar">
@@ -77,14 +94,38 @@ export default function SessionPage() {
           token={connection.token}
           serverUrl={connection.url}
           connect
-          video
-          audio
+          video={connection.choices.videoEnabled}
+          audio={connection.choices.audioEnabled}
           data-lk-theme="default"
-          onDisconnected={() => setConnection(null)}
+          onDisconnected={leave}
           onError={(e) => setError(e.message)}
         >
           <VideoConference />
         </LiveKitRoom>
+      </div>
+    )
+  }
+
+  if (phase === 'prejoin') {
+    return (
+      <div className="session session--live" data-lk-theme="default">
+        <header className="session__bar">
+          <h1 className="session__title">
+            Join <code className="session__id">{room}</code>
+          </h1>
+          <button className="session__btn session__btn--ghost" onClick={() => setPhase('idle')}>
+            Back
+          </button>
+        </header>
+        {error && <p className="session__error">{error}</p>}
+        <div className="session__prejoin">
+          <PreJoin
+            defaults={{ username: '', videoEnabled: true, audioEnabled: true }}
+            onSubmit={onPreJoinSubmit}
+            onError={(e) => setError(e.message)}
+            joinLabel="Join call"
+          />
+        </div>
       </div>
     )
   }
@@ -94,12 +135,8 @@ export default function SessionPage() {
       <header className="session__bar">
         <h1 className="session__title">Live Session</h1>
         <div className="session__controls">
-          <button
-            className="session__btn session__btn--primary"
-            onClick={createRoom}
-            disabled={connecting}
-          >
-            {connecting ? 'Connecting…' : 'Start call'}
+          <button className="session__btn session__btn--primary" onClick={createRoom}>
+            Start call
           </button>
           <span className="session__or">or</span>
           <input
@@ -111,7 +148,7 @@ export default function SessionPage() {
               if (e.key === 'Enter') joinRoom()
             }}
           />
-          <button className="session__btn" onClick={joinRoom} disabled={connecting}>
+          <button className="session__btn" onClick={joinRoom}>
             Join
           </button>
         </div>
