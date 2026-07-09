@@ -1,10 +1,11 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { LiveKitRoom, PreJoin, VideoConference } from '@livekit/components-react'
+import { PreJoin } from '@livekit/components-react'
 import type { LocalUserChoices } from '@livekit/components-react'
 import '@livekit/components-styles'
 import './session.css'
+import SessionCanvas from './SessionCanvas'
 
 // A live session is a LiveKit room. The user must sign in with Figma first; the
 // LiveKit identity/name then come from their Account (server-trusted). Flow:
@@ -119,19 +120,7 @@ export default function SessionPage() {
             </button>
           </div>
         </header>
-        <LiveKitRoom
-          className="session__room"
-          token={connection.token}
-          serverUrl={connection.url}
-          connect
-          video={connection.choices.videoEnabled}
-          audio={connection.choices.audioEnabled}
-          data-lk-theme="default"
-          onDisconnected={leave}
-          onError={(e) => setError(e.message)}
-        >
-          <VideoConference />
-        </LiveKitRoom>
+        <SessionCanvas connection={connection} onLeave={leave} />
       </div>
     )
   }
