@@ -3,6 +3,7 @@
 import { memo } from 'react'
 import { ParticipantTile } from '@livekit/components-react'
 import type { TrackReferenceOrPlaceholder } from '@livekit/components-react'
+import { Track } from 'livekit-client'
 import type { NodeProps, Node } from '@xyflow/react'
 
 // A single participant's camera, rendered as a React Flow node. LiveKit's
@@ -17,8 +18,10 @@ export type ParticipantNodeData = { trackRef: TrackReferenceOrPlaceholder }
 export type ParticipantFlowNode = Node<ParticipantNodeData, 'participant'>
 
 function ParticipantNodeImpl({ data }: NodeProps<ParticipantFlowNode>) {
+  // Screen shares are landscape — give them a wider 16:9 tile than camera feeds.
+  const isScreenShare = data.trackRef.source === Track.Source.ScreenShare
   return (
-    <div className="participant-node">
+    <div className={`participant-node${isScreenShare ? ' participant-node--screen' : ''}`}>
       {/*
         The tile itself is the drag handle (the whole node moves). Interactive
         LiveKit controls inside the tile carry the `.nodrag` class so a click on

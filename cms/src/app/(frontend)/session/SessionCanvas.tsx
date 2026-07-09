@@ -67,9 +67,10 @@ const decode = (bytes: Uint8Array): LayoutMessage | null => {
   }
 }
 
-// Stable node id (one camera per participant). Placeholders (camera off) share
-// the same id, so a tile persists as a participant toggles their camera.
-const nodeId = (t: TrackReferenceOrPlaceholder) => `${t.participant.identity}/camera`
+// Stable node id — one tile per (participant, source), so a participant can have
+// both a camera node and a screen-share node. Placeholders (camera off) keep the
+// same id, so a tile persists as a participant toggles their camera.
+const nodeId = (t: TrackReferenceOrPlaceholder) => `${t.participant.identity}/${t.source}`
 // A signature that also changes when a placeholder becomes a real track, so the
 // reconcile effect refreshes the tile's trackRef.
 const nodeSig = (t: TrackReferenceOrPlaceholder) =>
@@ -142,7 +143,12 @@ function SessionControls() {
 }
 
 function CanvasFlow() {
-  const tracks = useTracks([{ source: Track.Source.Camera, withPlaceholder: true }])
+  // Camera (with a placeholder so camera-off participants still get a tile) plus
+  // screen share (no placeholder — a tile only appears while actively sharing).
+  const tracks = useTracks([
+    { source: Track.Source.Camera, withPlaceholder: true },
+    { source: Track.Source.ScreenShare, withPlaceholder: false },
+  ])
   const [nodes, setNodes, onNodesChange] = useNodesState<ParticipantFlowNode>([])
   const { fitView } = useReactFlow()
 

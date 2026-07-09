@@ -32,6 +32,12 @@
   cursor: grabbing;
 }
 
+/* Screen shares are landscape — wider 16:9 tile. */
+.participant-node--screen {
+  width: 480px;
+  height: 270px;
+}
+
 .participant-node__tile {
   width: 100%;
   height: 100%;
