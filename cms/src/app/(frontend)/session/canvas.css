@@ -67,6 +67,37 @@
   margin: 1rem;
 }
 
+/* Open Session control (top-right panel). */
+.session-canvas__access {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid #333;
+  background: rgba(20, 20, 20, 0.92);
+  backdrop-filter: blur(8px);
+  color: #f4f4f4;
+}
+
+button.session-canvas__access {
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+button.session-canvas__access:hover {
+  background: #262626;
+  border-color: #555;
+}
+
+button.session-canvas__access:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.session-canvas__access--readonly {
+  opacity: 0.85;
+}
+
 .session-canvas .lk-control-bar {
   border: 1px solid #333;
   border-radius: 0.75rem;

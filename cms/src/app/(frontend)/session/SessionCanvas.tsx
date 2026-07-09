@@ -1,16 +1,19 @@
 'use client'
 
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ControlBar,
   LiveKitRoom,
   RoomAudioRenderer,
   useConnectionState,
   useDataChannel,
+  useLocalParticipant,
+  useRoomInfo,
   useTracks,
 } from '@livekit/components-react'
 import type { LocalUserChoices, TrackReferenceOrPlaceholder } from '@livekit/components-react'
 import { ConnectionState, Track } from 'livekit-client'
+import type { DisconnectReason } from 'livekit-client'
 import {
   Background,
   Controls,
@@ -82,6 +85,61 @@ const TILE_W = 360 // node width + gap
 const TILE_H = 300 // node height + gap
 function gridPosition(index: number): XY {
   return { x: (index % COLS) * TILE_W, y: Math.floor(index / COLS) * TILE_H }
+}
+
+// Live "Open Session" control, shown in a canvas panel. Reads the room metadata
+// reactively (useRoomInfo re-renders on RoomMetadataChanged), so every client
+// sees the current state instantly. Only the host gets an interactive toggle;
+// everyone else sees a read-only badge.
+function SessionControls() {
+  const { name, metadata } = useRoomInfo()
+  const { localParticipant } = useLocalParticipant()
+  const [busy, setBusy] = useState(false)
+
+  let openSession = false
+  let host = ''
+  if (metadata) {
+    try {
+      const meta = JSON.parse(metadata) as { openSession?: boolean; host?: string }
+      openSession = Boolean(meta.openSession)
+      host = meta.host ?? ''
+    } catch {
+      // leave defaults
+    }
+  }
+  const isHost = !!host && localParticipant.identity === host
+
+  const toggle = useCallback(async () => {
+    setBusy(true)
+    try {
+      await fetch('/api/livekit/session/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ room: name, openSession: !openSession }),
+      })
+      // No local state change needed — the metadata update echoes back via
+      // RoomMetadataChanged and re-renders this component.
+    } finally {
+      setBusy(false)
+    }
+  }, [name, openSession])
+
+  const label = openSession ? '🔓 Open Session' : '🔒 Members only'
+
+  if (!isHost) {
+    return <span className="session-canvas__access session-canvas__access--readonly">{label}</span>
+  }
+  return (
+    <button
+      className="session-canvas__access nodrag"
+      onClick={toggle}
+      disabled={busy}
+      title="Toggle whether anyone can join this session"
+    >
+      {label}
+    </button>
+  )
 }
 
 function CanvasFlow() {
@@ -210,6 +268,9 @@ function CanvasFlow() {
     >
       <Background gap={24} color="#1f1f1f" />
       <Controls showInteractive={false} />
+      <Panel position="top-right">
+        <SessionControls />
+      </Panel>
       <Panel position="bottom-center">
         <ControlBar variation="minimal" />
       </Panel>
@@ -222,7 +283,7 @@ export default function SessionCanvas({
   onLeave,
 }: {
   connection: Connection
-  onLeave: () => void
+  onLeave: (reason?: DisconnectReason) => void
 }) {
   return (
     <LiveKitRoom

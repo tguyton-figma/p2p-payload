@@ -3,15 +3,17 @@
 import { useCallback, useEffect, useState } from 'react'
 import { PreJoin } from '@livekit/components-react'
 import type { LocalUserChoices } from '@livekit/components-react'
+import { DisconnectReason } from 'livekit-client'
 import '@livekit/components-styles'
 import './session.css'
 import SessionCanvas from './SessionCanvas'
 
-// A live session is a LiveKit room. The user must sign in with Figma first; the
-// LiveKit identity/name then come from their Account (server-trusted). Flow:
-// sign in -> pick/create a room -> pre-join (preview) -> connect. The token comes
-// from our own /api/livekit/token, which also returns the server URL (no public
-// env var needed). LiveKit's SFU handles signaling, forwarding, and reconnection.
+// A live session is a LiveKit room. Access is per-session: an "Open Session" can
+// be joined by anyone (including anonymous guests/agents); a closed session
+// requires signing in with Figma. Creating a room always requires sign-in — the
+// creator becomes the host and picks the initial Open Session setting. Flow:
+// (sign in or go guest) -> pick/create a room -> pre-join (preview) -> connect.
+// The token comes from /api/livekit/token, which also returns the server URL.
 
 interface Account {
   figmaId: string
@@ -28,12 +30,15 @@ interface Connection {
   choices: LocalUserChoices
 }
 
-async function fetchToken(room: string): Promise<{ token: string; url: string }> {
+async function fetchToken(
+  room: string,
+  opts: { openSession?: boolean; name?: string },
+): Promise<{ token: string; url: string }> {
   const res = await fetch('/api/livekit/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ room }),
+    body: JSON.stringify({ room, ...opts }),
   })
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string }
@@ -48,6 +53,10 @@ export default function SessionPage() {
   const [phase, setPhase] = useState<Phase>('idle')
   const [room, setRoom] = useState('')
   const [joinId, setJoinId] = useState('')
+  // Open Session choice when creating a room; undefined when joining (joins
+  // inherit the room's existing setting).
+  const [pendingOpen, setPendingOpen] = useState<boolean | undefined>(undefined)
+  const [openSession, setOpenSession] = useState(false)
   const [connection, setConnection] = useState<Connection | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -74,12 +83,18 @@ export default function SessionPage() {
     setAccount(null)
   }, [])
 
-  const toPrejoin = useCallback((r: string) => {
+  const toPrejoin = useCallback((r: string, open?: boolean) => {
     setRoom(r)
+    setPendingOpen(open)
     setError(null)
     setPhase('prejoin')
   }, [])
-  const createRoom = useCallback(() => toPrejoin(crypto.randomUUID().slice(0, 8)), [toPrejoin])
+  // Start a new room (must be signed in) — the checkbox sets its Open Session.
+  const createRoom = useCallback(
+    () => toPrejoin(crypto.randomUUID().slice(0, 8), openSession),
+    [toPrejoin, openSession],
+  )
+  // Join an existing room by id (works for accounts and guests).
   const joinRoom = useCallback(() => {
     const id = joinId.trim()
     if (id) toPrejoin(id)
@@ -89,19 +104,29 @@ export default function SessionPage() {
     async (choices: LocalUserChoices) => {
       setError(null)
       try {
-        const { token, url } = await fetchToken(room)
+        const { token, url } = await fetchToken(room, {
+          openSession: pendingOpen,
+          name: choices.username,
+        })
         setConnection({ room, token, url, choices })
         setPhase('connected')
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Could not join the room.')
       }
     },
-    [room],
+    [room, pendingOpen],
   )
 
-  const leave = useCallback(() => {
+  // Called when the LiveKit room disconnects. A server-side removal (host turned
+  // off Open Session) surfaces an explanation; normal leaves are silent.
+  const leave = useCallback((reason?: DisconnectReason) => {
     setConnection(null)
     setPhase('idle')
+    setError(
+      reason === DisconnectReason.PARTICIPANT_REMOVED
+        ? 'The host turned off Open Session, so you were removed.'
+        : null,
+    )
   }, [])
 
   // In a call.
@@ -125,8 +150,8 @@ export default function SessionPage() {
     )
   }
 
-  // Device/name preview before connecting.
-  if (phase === 'prejoin' && account) {
+  // Device/name preview before connecting. Allowed for accounts and guests.
+  if (phase === 'prejoin') {
     return (
       <div className="session session--live" data-lk-theme="default">
         <header className="session__bar">
@@ -140,7 +165,11 @@ export default function SessionPage() {
         {error && <p className="session__error">{error}</p>}
         <div className="session__prejoin">
           <PreJoin
-            defaults={{ username: account.handle ?? '', videoEnabled: true, audioEnabled: true }}
+            defaults={{
+              username: account?.handle ?? '',
+              videoEnabled: true,
+              audioEnabled: true,
+            }}
             onSubmit={onPreJoinSubmit}
             onError={(e) => setError(e.message)}
             joinLabel="Join call"
@@ -161,7 +190,7 @@ export default function SessionPage() {
     )
   }
 
-  // Signed out.
+  // Signed out — can still join an Open Session as a guest.
   if (!account) {
     return (
       <div className="session">
@@ -169,7 +198,7 @@ export default function SessionPage() {
           <h1 className="session__title">Live Session</h1>
         </header>
         <div className="session__signin">
-          <p>Sign in with Figma to start or join a call.</p>
+          <p>Sign in with Figma to start a call or join a members-only session.</p>
           <button
             className="session__btn session__btn--primary"
             onClick={() => {
@@ -180,6 +209,23 @@ export default function SessionPage() {
           >
             Sign in with Figma
           </button>
+          <div className="session__guest">
+            <span className="session__or">or join an open session as a guest</span>
+            <div className="session__controls">
+              <input
+                className="session__input"
+                placeholder="Room ID"
+                value={joinId}
+                onChange={(e) => setJoinId(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') joinRoom()
+                }}
+              />
+              <button className="session__btn" onClick={joinRoom}>
+                Join as guest
+              </button>
+            </div>
+          </div>
         </div>
         {error && <p className="session__error">{error}</p>}
       </div>
@@ -195,6 +241,14 @@ export default function SessionPage() {
           <button className="session__btn session__btn--primary" onClick={createRoom}>
             Start call
           </button>
+          <label className="session__checkbox">
+            <input
+              type="checkbox"
+              checked={openSession}
+              onChange={(e) => setOpenSession(e.target.checked)}
+            />
+            Open Session
+          </label>
           <span className="session__or">or</span>
           <input
             className="session__input"
