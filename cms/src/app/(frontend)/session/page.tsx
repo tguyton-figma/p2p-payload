@@ -1,17 +1,22 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { LiveKitRoom, PreJoin, VideoConference } from '@livekit/components-react'
 import type { LocalUserChoices } from '@livekit/components-react'
 import '@livekit/components-styles'
 import './session.css'
 
-// A live session is a LiveKit room. Flow: pick/create a room -> pre-join
-// (set a display name, preview camera/mic) -> connect. We fetch a short-lived,
-// room-scoped access token from our own /api/livekit/token endpoint (which also
-// returns the server URL, so no public env var is needed), then hand it to
-// <LiveKitRoom>. LiveKit's SFU handles signaling, media forwarding, and
-// reconnection, scaling to many-to-many (1-10) without a mesh fan-out cap.
+// A live session is a LiveKit room. The user must sign in with Figma first; the
+// LiveKit identity/name then come from their Account (server-trusted). Flow:
+// sign in -> pick/create a room -> pre-join (preview) -> connect. The token comes
+// from our own /api/livekit/token, which also returns the server URL (no public
+// env var needed). LiveKit's SFU handles signaling, forwarding, and reconnection.
+
+interface Account {
+  figmaId: string
+  handle: string | null
+  avatarUrl: string | null
+}
 
 type Phase = 'idle' | 'prejoin' | 'connected'
 
@@ -22,11 +27,12 @@ interface Connection {
   choices: LocalUserChoices
 }
 
-async function fetchToken(room: string, name: string): Promise<{ token: string; url: string }> {
+async function fetchToken(room: string): Promise<{ token: string; url: string }> {
   const res = await fetch('/api/livekit/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ room, name }),
+    credentials: 'include',
+    body: JSON.stringify({ room }),
   })
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string }
@@ -36,19 +42,42 @@ async function fetchToken(room: string, name: string): Promise<{ token: string; 
 }
 
 export default function SessionPage() {
+  // undefined = still checking auth; null = signed out; Account = signed in.
+  const [account, setAccount] = useState<Account | null | undefined>(undefined)
   const [phase, setPhase] = useState<Phase>('idle')
   const [room, setRoom] = useState('')
   const [joinId, setJoinId] = useState('')
   const [connection, setConnection] = useState<Connection | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const loadMe = useCallback(async () => {
+    try {
+      const res = await fetch('/api/accounts/oauth/me', { credentials: 'include' })
+      const data = (await res.json()) as { account: Account | null }
+      setAccount(data.account)
+    } catch {
+      setAccount(null)
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadMe()
+  }, [loadMe])
+
+  const signOut = useCallback(async () => {
+    await fetch('/api/accounts/oauth/logout', { method: 'POST', credentials: 'include' }).catch(
+      () => {},
+    )
+    setConnection(null)
+    setPhase('idle')
+    setAccount(null)
+  }, [])
+
   const toPrejoin = useCallback((r: string) => {
     setRoom(r)
     setError(null)
     setPhase('prejoin')
   }, [])
-
-  // Start a new call with a short random room name; anyone with the name can join.
   const createRoom = useCallback(() => toPrejoin(crypto.randomUUID().slice(0, 8)), [toPrejoin])
   const joinRoom = useCallback(() => {
     const id = joinId.trim()
@@ -59,7 +88,7 @@ export default function SessionPage() {
     async (choices: LocalUserChoices) => {
       setError(null)
       try {
-        const { token, url } = await fetchToken(room, choices.username)
+        const { token, url } = await fetchToken(room)
         setConnection({ room, token, url, choices })
         setPhase('connected')
       } catch (e) {
@@ -74,6 +103,7 @@ export default function SessionPage() {
     setPhase('idle')
   }, [])
 
+  // In a call.
   if (phase === 'connected' && connection) {
     return (
       <div className="session session--live">
@@ -106,7 +136,8 @@ export default function SessionPage() {
     )
   }
 
-  if (phase === 'prejoin') {
+  // Device/name preview before connecting.
+  if (phase === 'prejoin' && account) {
     return (
       <div className="session session--live" data-lk-theme="default">
         <header className="session__bar">
@@ -120,7 +151,7 @@ export default function SessionPage() {
         {error && <p className="session__error">{error}</p>}
         <div className="session__prejoin">
           <PreJoin
-            defaults={{ username: '', videoEnabled: true, audioEnabled: true }}
+            defaults={{ username: account.handle ?? '', videoEnabled: true, audioEnabled: true }}
             onSubmit={onPreJoinSubmit}
             onError={(e) => setError(e.message)}
             joinLabel="Join call"
@@ -130,6 +161,43 @@ export default function SessionPage() {
     )
   }
 
+  // Still checking auth.
+  if (account === undefined) {
+    return (
+      <div className="session">
+        <header className="session__bar">
+          <h1 className="session__title">Live Session</h1>
+        </header>
+      </div>
+    )
+  }
+
+  // Signed out.
+  if (!account) {
+    return (
+      <div className="session">
+        <header className="session__bar">
+          <h1 className="session__title">Live Session</h1>
+        </header>
+        <div className="session__signin">
+          <p>Sign in with Figma to start or join a call.</p>
+          <button
+            className="session__btn session__btn--primary"
+            onClick={() => {
+              // Full-page navigation (not client routing) so the OAuth redirect
+              // chain stays top-level and the session cookie is delivered.
+              window.location.href = '/api/accounts/oauth/login?redirect=/session'
+            }}
+          >
+            Sign in with Figma
+          </button>
+        </div>
+        {error && <p className="session__error">{error}</p>}
+      </div>
+    )
+  }
+
+  // Signed in — lobby.
   return (
     <div className="session">
       <header className="session__bar">
@@ -150,6 +218,12 @@ export default function SessionPage() {
           />
           <button className="session__btn" onClick={joinRoom}>
             Join
+          </button>
+        </div>
+        <div className="session__meta">
+          <span className="session__id">@{account.handle ?? account.figmaId}</span>
+          <button className="session__btn session__btn--ghost" onClick={signOut}>
+            Sign out
           </button>
         </div>
       </header>

@@ -1,5 +1,7 @@
 import type { CollectionConfig } from 'payload'
+import { parseCookies } from 'payload/shared'
 import { accountsOAuthEndpoints } from '../endpoints/accounts/oauth'
+import { PP_ACCOUNT_COOKIE } from '../lib/oauth/server/account-auth'
 
 /**
  * Accounts collection
@@ -18,10 +20,44 @@ export const Accounts: CollectionConfig = {
     useAsTitle: 'handle',
     defaultColumns: ['handle', 'email', 'figmaId', 'updatedAt'],
   },
+  auth: {
+    // No password login — identities come from Figma OAuth. A custom strategy
+    // authenticates browser requests via the httpOnly `pp_account` cookie set at
+    // sign-in, so payload.auth() returns the Account as req.user.
+    disableLocalStrategy: true,
+    strategies: [
+      {
+        name: 'account-session',
+        authenticate: async ({ headers, payload }) => {
+          const token = parseCookies(headers).get(PP_ACCOUNT_COOKIE)
+          if (!token) return { user: null }
+          const { docs } = await payload.find({
+            collection: 'accounts',
+            where: { sessionToken: { equals: token } },
+            limit: 1,
+            overrideAccess: true,
+            depth: 0,
+          })
+          if (!docs.length) return { user: null }
+          return {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            user: { ...docs[0], collection: 'accounts', _strategy: 'account-session' } as any,
+          }
+        },
+      },
+    ],
+  },
   access: {
     create: () => false,
-    // Admins can read accounts so relationships render in the admin panel
-    read: ({ req: { user } }) => Boolean((user as any)?.roles?.includes('admin')),
+    // Admins read all (for admin-panel relationships); a signed-in account reads
+    // only its own record.
+    read: ({ req: { user } }) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((user as any)?.roles?.includes('admin')) return true
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((user as any)?.collection === 'accounts') return { id: { equals: (user as any).id } }
+      return false
+    },
     update: () => false,
     delete: () => false,
   },

@@ -1,4 +1,5 @@
 import type { CollectionConfig } from 'payload'
+import { isAdmin } from '../lib/access'
 
 export const Logs: CollectionConfig = {
   slug: 'logs',
@@ -7,7 +8,7 @@ export const Logs: CollectionConfig = {
     defaultColumns: ['subject', 'source', 'timelineId', 'createdAt'],
   },
   access: {
-    read: ({ req: { user } }) => Boolean(user?.roles?.includes('admin')),
+    read: ({ req: { user } }) => isAdmin(user),
     create: ({ req: { user } }) => Boolean(user),
     update: () => false,
     delete: () => false,

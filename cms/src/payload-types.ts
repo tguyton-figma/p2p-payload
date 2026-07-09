@@ -64,6 +64,7 @@ export type SupportedTimezones =
 export interface Config {
   auth: {
     users: UserAuthOperations;
+    accounts: AccountAuthOperations;
   };
   blocks: {};
   collections: {
@@ -109,7 +110,7 @@ export interface Config {
   widgets: {
     collections: CollectionsWidget;
   };
-  user: User;
+  user: User | Account;
   jobs: {
     tasks: {
       'enrich-media': TaskEnrichMedia;
@@ -122,6 +123,24 @@ export interface Config {
   };
 }
 export interface UserAuthOperations {
+  forgotPassword: {
+    email: string;
+    password: string;
+  };
+  login: {
+    email: string;
+    password: string;
+  };
+  registerFirstUser: {
+    email: string;
+    password: string;
+  };
+  unlock: {
+    email: string;
+    password: string;
+  };
+}
+export interface AccountAuthOperations {
   forgotPassword: {
     email: string;
     password: string;
@@ -270,6 +289,7 @@ export interface Account {
   pendingSessionId?: string | null;
   updatedAt: string;
   createdAt: string;
+  collection: 'accounts';
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -701,10 +721,15 @@ export interface PayloadLockedDocument {
         value: string | Session;
       } | null);
   globalSlug?: string | null;
-  user: {
-    relationTo: 'users';
-    value: string | User;
-  };
+  user:
+    | {
+        relationTo: 'users';
+        value: string | User;
+      }
+    | {
+        relationTo: 'accounts';
+        value: string | Account;
+      };
   updatedAt: string;
   createdAt: string;
 }
@@ -714,10 +739,15 @@ export interface PayloadLockedDocument {
  */
 export interface PayloadPreference {
   id: string;
-  user: {
-    relationTo: 'users';
-    value: string | User;
-  };
+  user:
+    | {
+        relationTo: 'users';
+        value: string | User;
+      }
+    | {
+        relationTo: 'accounts';
+        value: string | Account;
+      };
   key?: string | null;
   value?:
     | {

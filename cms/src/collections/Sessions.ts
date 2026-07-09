@@ -18,10 +18,14 @@ export const Sessions: CollectionConfig = {
     defaultColumns: ['id', 'status', 'updatedAt'],
   },
   access: {
+    // Any authenticated principal — a signed-in Account or an admin/editor User.
     read: ({ req: { user } }) => Boolean(user),
     create: ({ req: { user } }) => Boolean(user),
-    update: ({ req: { user } }) => Boolean(user),
-    delete: ({ req: { user } }) => Boolean(user?.roles?.includes('admin')),
+    update: ({ req: { user } }) =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      Boolean((user as any)?.collection === 'accounts' || (user as any)?.roles),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete: ({ req: { user } }) => Boolean((user as any)?.roles?.includes('admin')),
   },
   fields: [
     {

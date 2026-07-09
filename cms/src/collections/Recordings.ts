@@ -1,4 +1,5 @@
 import type { CollectionConfig } from 'payload'
+import { isAdmin, isAdminOrEditor } from '../lib/access'
 
 export const Recordings: CollectionConfig = {
   slug: 'recordings',
@@ -8,11 +9,9 @@ export const Recordings: CollectionConfig = {
   },
   access: {
     read: () => true,
-    create: ({ req: { user } }) =>
-      Boolean(user?.roles?.includes('admin') || user?.roles?.includes('editor')),
-    update: ({ req: { user } }) =>
-      Boolean(user?.roles?.includes('admin') || user?.roles?.includes('editor')),
-    delete: ({ req: { user } }) => Boolean(user?.roles?.includes('admin')),
+    create: ({ req: { user } }) => isAdminOrEditor(user),
+    update: ({ req: { user } }) => isAdminOrEditor(user),
+    delete: ({ req: { user } }) => isAdmin(user),
   },
   hooks: {
     beforeValidate: [

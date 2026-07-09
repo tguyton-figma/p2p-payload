@@ -15,6 +15,11 @@
 import type { Endpoint } from 'payload'
 import { completeFigmaOAuth, getFigmaAuthorizationUrl } from '../../lib/oauth/providers/figma'
 import { generateId, getBaseUrl } from '../../lib/oauth/server/utils'
+import {
+  accountCookie,
+  clearedAccountCookie,
+  getAccountFromRequest,
+} from '../../lib/oauth/server/account-auth'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const ACCOUNTS = 'accounts' as any
@@ -22,7 +27,11 @@ const ACCOUNTS = 'accounts' as any
 // In-memory CSRF state store (15 min TTL).
 // Only lives for the authorize → Figma → callback round-trip — same Lambda instance.
 const pendingStates = new Map<string, {
-  sessionId: string
+  // 'poll' = Make/recorder app (claims the token by polling /oauth/session).
+  // 'browser' = frontend login (callback sets a cookie and redirects back).
+  mode: 'poll' | 'browser'
+  sessionId?: string
+  redirectPath?: string
   redirectUri: string
   createdAt: number
 }>()
@@ -69,13 +78,50 @@ export const accountsOAuthAuthorize: Endpoint = {
     }
 
     const state = generateId(32)
-    pendingStates.set(state, { sessionId, redirectUri, createdAt: Date.now() })
+    pendingStates.set(state, { mode: 'poll', sessionId, redirectUri, createdAt: Date.now() })
 
     const authUrl = getFigmaAuthorizationUrl(config, {
       scopes: ['current_user:read'],
       state,
     })
 
+    return Response.redirect(authUrl, 302)
+  },
+}
+
+/**
+ * GET /api/accounts/oauth/login?redirect=/session
+ *
+ * Browser sign-in. Unlike /authorize (poll-based for the Make app), this
+ * remembers a post-login redirect path; the callback sets an httpOnly cookie and
+ * sends the browser back there. Keep the whole chain on the frontend host so the
+ * host-only cookie is set and read on the same origin.
+ */
+export const accountsOAuthLogin: Endpoint = {
+  path: '/oauth/login',
+  method: 'get',
+  handler: async (req) => {
+    const url = new URL(req.url || '', 'http://localhost')
+    const requested = url.searchParams.get('redirect') || '/session'
+    // Same-site relative paths only — prevents open-redirect abuse.
+    const redirectPath =
+      requested.startsWith('/') && !requested.startsWith('//') ? requested : '/session'
+
+    const baseUrl = getBaseUrl(req)
+    const redirectUri = `${baseUrl}/api/accounts/oauth/callback`
+    const config = getConfig(redirectUri)
+
+    if (!config) {
+      return Response.json(
+        { error: 'OAuth not configured — OAUTH_CLIENT_ID / OAUTH_CLIENT_SECRET missing' },
+        { status: 500 },
+      )
+    }
+
+    const state = generateId(32)
+    pendingStates.set(state, { mode: 'browser', redirectPath, redirectUri, createdAt: Date.now() })
+
+    const authUrl = getFigmaAuthorizationUrl(config, { scopes: ['current_user:read'], state })
     return Response.redirect(authUrl, 302)
   },
 }
@@ -112,7 +158,7 @@ export const accountsOAuthCallback: Endpoint = {
     }
     pendingStates.delete(state)
 
-    const { sessionId, redirectUri } = pending
+    const { sessionId, redirectUri, mode, redirectPath } = pending
     const config = getConfig(redirectUri)
 
     if (!config) {
@@ -140,7 +186,7 @@ export const accountsOAuthCallback: Endpoint = {
         refreshToken: result.tokens.refreshToken,
         tokenExpiresAt: result.tokens.expiresAt.toISOString(),
         sessionToken,
-        pendingSessionId: sessionId,
+        pendingSessionId: mode === 'browser' ? null : sessionId,
       }
 
       if (docs.length > 0) {
@@ -165,6 +211,19 @@ export const accountsOAuthCallback: Endpoint = {
       )
 
       const baseUrl = getBaseUrl(req)
+
+      // Browser sign-in: set the session cookie and return to the app.
+      if (mode === 'browser') {
+        return new Response(null, {
+          status: 302,
+          headers: {
+            Location: `${baseUrl}${redirectPath ?? '/session'}`,
+            'Set-Cookie': accountCookie(sessionToken),
+          },
+        })
+      }
+
+      // Make/recorder app: it polls /oauth/session for the token.
       return Response.redirect(`${baseUrl}/oauth/success`, 302)
     } catch (err) {
       req.payload.logger.error({ err }, 'Accounts OAuth callback error')
@@ -226,8 +285,45 @@ export const accountsOAuthSession: Endpoint = {
   },
 }
 
+/**
+ * GET /api/accounts/oauth/me
+ *
+ * Returns the signed-in account (from the `pp_account` cookie) or null.
+ * Never returns the sessionToken.
+ */
+export const accountsOAuthMe: Endpoint = {
+  path: '/oauth/me',
+  method: 'get',
+  handler: async (req) => {
+    const account = await getAccountFromRequest(req.payload, req.headers)
+    if (!account) return Response.json({ account: null })
+    return Response.json({
+      account: {
+        figmaId: account.figmaId,
+        handle: account.handle ?? null,
+        email: account.email ?? null,
+        avatarUrl: account.avatarUrl ?? null,
+      },
+    })
+  },
+}
+
+/**
+ * POST /api/accounts/oauth/logout — clear the browser account session cookie.
+ */
+export const accountsOAuthLogout: Endpoint = {
+  path: '/oauth/logout',
+  method: 'post',
+  handler: async () => {
+    return Response.json({ ok: true }, { headers: { 'Set-Cookie': clearedAccountCookie() } })
+  },
+}
+
 export const accountsOAuthEndpoints: Endpoint[] = [
   accountsOAuthAuthorize,
+  accountsOAuthLogin,
   accountsOAuthCallback,
   accountsOAuthSession,
+  accountsOAuthMe,
+  accountsOAuthLogout,
 ]

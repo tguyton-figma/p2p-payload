@@ -69,7 +69,11 @@ export async function POST(
   const record: ViewerRecord = {
     viewerId,
     displayName: user?.email ?? displayName ?? 'Anonymous',
-    avatarUrl: user?.figmaImageUrl ?? null,
+    // Users carry `figmaImageUrl`; signed-in Accounts carry `avatarUrl`.
+    avatarUrl:
+      (user as { avatarUrl?: string | null; figmaImageUrl?: string | null } | null)?.avatarUrl ??
+      (user as { figmaImageUrl?: string | null } | null)?.figmaImageUrl ??
+      null,
     sceneIndex,
     playheadMs,
     lastSeen: Date.now(),

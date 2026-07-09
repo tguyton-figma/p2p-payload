@@ -1,4 +1,5 @@
 import type { CollectionConfig } from 'payload'
+import { isAdmin } from '../lib/access'
 
 export const Memories: CollectionConfig = {
   slug: 'memories',
@@ -15,7 +16,7 @@ export const Memories: CollectionConfig = {
     // Append-only: no updates
     update: () => false,
     // Only admins can delete memories
-    delete: ({ req: { user } }) => Boolean(user?.roles?.includes('admin')),
+    delete: ({ req: { user } }) => isAdmin(user),
   },
   timestamps: true,
   fields: [

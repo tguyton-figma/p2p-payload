@@ -2,6 +2,7 @@ import type { CollectionConfig } from 'payload'
 import { populateMomentPaint } from '@/hooks/populateMomentPaint'
 import { slugField } from 'payload'
 import { generateMomentDefaults, generatePoeticName } from '@/hooks/generateMomentName'
+import { isAdminOrEditor } from '@/lib/access'
 
 export const Moments: CollectionConfig = {
   slug: 'moments',
@@ -13,7 +14,7 @@ export const Moments: CollectionConfig = {
   access: {
     read: ({ req: { user } }) => {
       if (!user) return false
-      if (user.roles?.includes('admin') || user.roles?.includes('editor')) return true
+      if (isAdminOrEditor(user)) return true
       // Non-admin users can see public and internal moments
       return {
         or: [
@@ -24,8 +25,7 @@ export const Moments: CollectionConfig = {
     },
     create: ({ req: { user } }) => Boolean(user),
     update: ({ req: { user } }) => Boolean(user),
-    delete: ({ req: { user } }) =>
-      Boolean(user?.roles?.includes('admin') || user?.roles?.includes('editor')),
+    delete: ({ req: { user } }) => isAdminOrEditor(user),
   },
   hooks: {
     beforeValidate: [generateMomentDefaults],

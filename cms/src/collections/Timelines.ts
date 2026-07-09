@@ -1,4 +1,5 @@
 import type { CollectionConfig } from 'payload'
+import { isAdmin, isAdminOrEditor } from '../lib/access'
 
 export const Timelines: CollectionConfig = {
   slug: 'timelines',
@@ -15,14 +16,12 @@ export const Timelines: CollectionConfig = {
   access: {
     read: ({ req: { user } }) => {
       if (!user) return false
-      if (user.roles?.includes('admin') || user.roles?.includes('editor')) return true
+      if (isAdminOrEditor(user)) return true
       return { _status: { equals: 'published' } }
     },
-    create: ({ req: { user } }) =>
-      Boolean(user?.roles?.includes('admin') || user?.roles?.includes('editor')),
-    update: ({ req: { user } }) =>
-      Boolean(user?.roles?.includes('admin') || user?.roles?.includes('editor')),
-    delete: ({ req: { user } }) => Boolean(user?.roles?.includes('admin')),
+    create: ({ req: { user } }) => isAdminOrEditor(user),
+    update: ({ req: { user } }) => isAdminOrEditor(user),
+    delete: ({ req: { user } }) => isAdmin(user),
   },
   fields: [
     {
