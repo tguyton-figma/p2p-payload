@@ -17,6 +17,7 @@ import {
   Panel,
   ReactFlow,
   ReactFlowProvider,
+  useNodesInitialized,
   useNodesState,
   useReactFlow,
 } from '@xyflow/react'
@@ -72,16 +73,15 @@ const nodeId = (t: TrackReferenceOrPlaceholder) => `${t.participant.identity}/ca
 const nodeSig = (t: TrackReferenceOrPlaceholder) =>
   `${nodeId(t)}:${'publication' in t && t.publication ? t.publication.trackSid : 'ph'}`
 
-// Deterministic default placement: hash the id into a grid slot so every client
-// puts a newcomer in the same spot before anyone drags it (then moves sync).
+// Compact default placement: lay tiles out in a tidy grid near the origin,
+// slotted by the participant's position in the sorted id list. Sorting makes it
+// deterministic across clients (everyone agrees on where a newcomer lands before
+// any drag), while keeping tiles clustered instead of scattered across the plane.
 const COLS = 3
-const TILE_W = 340
-const TILE_H = 280
-function defaultPosition(id: string): XY {
-  let hash = 0
-  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0
-  const slot = hash % 60
-  return { x: (slot % COLS) * TILE_W, y: Math.floor(slot / COLS) * TILE_H }
+const TILE_W = 360 // node width + gap
+const TILE_H = 300 // node height + gap
+function gridPosition(index: number): XY {
+  return { x: (index % COLS) * TILE_W, y: Math.floor(index / COLS) * TILE_H }
 }
 
 function CanvasFlow() {
@@ -151,16 +151,19 @@ function CanvasFlow() {
   const trackSig = tracks.map(nodeSig).join('|')
   useEffect(() => {
     const wanted = new Map(tracksRef.current.map((t) => [nodeId(t), t]))
+    // Stable ordering so grid slots are consistent across clients.
+    const sortedIds = [...wanted.keys()].sort()
     setNodes((prev) => {
       // Update/keep existing nodes; drop nodes whose participant left.
       const next: ParticipantFlowNode[] = prev
         .filter((n) => wanted.has(n.id))
         .map((n) => ({ ...n, data: { trackRef: wanted.get(n.id)! } }))
       const existing = new Set(next.map((n) => n.id))
-      // Add nodes for new tracks.
+      // Add nodes for new tracks, reusing a known position (default/drag/peer) or
+      // slotting into the compact grid by sorted order.
       for (const [id, t] of wanted) {
         if (existing.has(id)) continue
-        const position = positionsRef.current[id] ?? defaultPosition(id)
+        const position = positionsRef.current[id] ?? gridPosition(sortedIds.indexOf(id))
         positionsRef.current[id] = position
         next.push({ id, type: 'participant', position, data: { trackRef: t } })
       }
@@ -169,14 +172,16 @@ function CanvasFlow() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackSig, setNodes])
 
-  // Fit the view once the first tile appears.
+  // Fit the view once the first tiles are measured. Gating on nodesInitialized
+  // (rather than a bare rAF) guarantees the nodes have real dimensions, so
+  // fitView can actually compute bounds and bring them into view.
+  const nodesInitialized = useNodesInitialized()
   useEffect(() => {
-    if (!hadNodesRef.current && nodes.length > 0) {
+    if (!hadNodesRef.current && nodesInitialized && nodes.length > 0) {
       hadNodesRef.current = true
-      // Defer so the node is measured before fitting.
-      requestAnimationFrame(() => fitView({ maxZoom: 1, padding: 0.2 }))
+      fitView({ maxZoom: 1, padding: 0.2 })
     }
-  }, [nodes.length, fitView])
+  }, [nodesInitialized, nodes.length, fitView])
 
   // --- broadcast local drags ---
   const onNodesChangeSync = useCallback(
