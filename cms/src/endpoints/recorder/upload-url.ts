@@ -19,14 +19,10 @@
  */
 
 import type { Endpoint } from 'payload'
+import { signMediaUpload } from '@/lib/figmaContent'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const ACCOUNTS = 'accounts' as any
-
-// Production Figma Content API base URL (matches constants.js in @payloadcms/figma)
-const CONTENT_API_BASE =
-  process.env.FIGMA_CONTENT_API_URL ||
-  'https://us-east-1.cms-tenants-001-production.figmacontent.com'
 
 export const recorderUploadUrl: Endpoint = {
   path: '/recorder/upload-url',
@@ -60,43 +56,12 @@ export const recorderUploadUrl: Endpoint = {
       return Response.json({ error: 'filename and mimeType are required' }, { status: 400 })
     }
 
-    const apiKey = process.env.FIGMA_CONTENT_API_ACCESS_KEY
-    if (!apiKey) {
-      return Response.json(
-        { error: 'Content API not configured — FIGMA_CONTENT_API_ACCESS_KEY missing' },
-        { status: 500 },
-      )
-    }
-
-    // Call Figma Content API to get a presigned S3 upload URL
-    const signRes = await fetch(`${CONTENT_API_BASE}/api/v0/uploads/sign`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Api-Key': apiKey,
-      },
-      body: JSON.stringify({
-        collectionId: 'media',
-        contentType: mimeType,
-        expiresIn: 3600,
-        filename,
-      }),
-    })
-
-    if (!signRes.ok) {
-      const err = await signRes.text()
-      req.payload.logger.error(`Failed to get presigned URL: ${signRes.status} ${err}`)
+    try {
+      const signed = await signMediaUpload(filename, mimeType)
+      return Response.json(signed)
+    } catch (err) {
+      req.payload.logger.error({ err }, 'Failed to get presigned URL')
       return Response.json({ error: 'Failed to get upload URL' }, { status: 500 })
     }
-
-    const { url, filename: safeFilename } = (await signRes.json()) as {
-      url: string
-      filename: string
-    }
-
-    return Response.json({
-      uploadUrl: url,
-      filename: safeFilename ?? filename,
-    })
   },
 }

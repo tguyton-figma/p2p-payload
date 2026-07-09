@@ -27,6 +27,7 @@ import type { NodeChange, NodeTypes } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { ParticipantNode } from './ParticipantNode'
 import type { ParticipantFlowNode } from './ParticipantNode'
+import { useCanvasRecorder } from './useCanvasRecorder'
 import './canvas.css'
 
 // The session canvas. <LiveKitRoom> wraps <ReactFlow> so that every custom node
@@ -142,6 +143,149 @@ function SessionControls() {
   )
 }
 
+// Hard cap on a single recording. Bounds the in-memory blob and keeps us well
+// inside the upload's limits; the host UI auto-stops at this length.
+const MAX_RECORDING_MS = 45 * 60 * 1000
+
+function formatElapsed(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000))
+  const m = Math.floor(total / 60)
+  const s = total % 60
+  return `${m}:${s.toString().padStart(2, '0')}`
+}
+
+// Recording control (top-right panel, below the Open Session control). Only the
+// host gets a Record/Stop button; everyone sees a live "recording" badge driven
+// by the `recording` flag in room metadata, so the indicator is consistent for
+// all participants. Capture itself runs in the host's browser via the recorder
+// hook passed in from the canvas.
+function RecordingControls({
+  recorder,
+  room,
+}: {
+  recorder: ReturnType<typeof useCanvasRecorder>
+  room: string
+}) {
+  const { metadata } = useRoomInfo()
+  const { localParticipant } = useLocalParticipant()
+  const [busy, setBusy] = useState(false)
+  const [now, setNow] = useState(() => Date.now())
+
+  let host = ''
+  let recording = false
+  let recordingStartedAt: string | undefined
+  if (metadata) {
+    try {
+      const meta = JSON.parse(metadata) as {
+        host?: string
+        recording?: boolean
+        recordingStartedAt?: string
+      }
+      host = meta.host ?? ''
+      recording = Boolean(meta.recording)
+      recordingStartedAt = meta.recordingStartedAt
+    } catch {
+      // leave defaults
+    }
+  }
+  const isHost = !!host && localParticipant.identity === host
+
+  const setRecordingState = useCallback(
+    async (value: boolean) => {
+      await fetch('/api/livekit/session/recording', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ room, recording: value }),
+      }).catch(() => {
+        // The badge is best-effort; local capture proceeds regardless.
+      })
+    },
+    [room],
+  )
+
+  const handleStart = useCallback(async () => {
+    setBusy(true)
+    try {
+      recorder.start()
+      await setRecordingState(true)
+    } finally {
+      setBusy(false)
+    }
+  }, [recorder, setRecordingState])
+
+  const handleStop = useCallback(async () => {
+    setBusy(true)
+    try {
+      await setRecordingState(false)
+      await recorder.stop()
+    } finally {
+      setBusy(false)
+    }
+  }, [recorder, setRecordingState])
+
+  // Tick the elapsed timer while recording.
+  useEffect(() => {
+    if (!recording && !recorder.isRecording) return
+    const id = setInterval(() => setNow(Date.now()), 500)
+    return () => clearInterval(id)
+  }, [recording, recorder.isRecording])
+
+  // Host-side hard cap: auto-stop once the recording hits MAX_RECORDING_MS.
+  useEffect(() => {
+    if (!recorder.isRecording) return
+    const startMs = recordingStartedAt ? Date.parse(recordingStartedAt) : Date.now()
+    const remaining = Math.max(0, MAX_RECORDING_MS - (Date.now() - startMs))
+    const id = setTimeout(() => void handleStop(), remaining)
+    return () => clearTimeout(id)
+  }, [recorder.isRecording, recordingStartedAt, handleStop])
+
+  // Non-host participants only see the live badge while recording is on.
+  if (!isHost) {
+    if (!recording) return null
+    return (
+      <span className="session-canvas__access session-canvas__access--readonly">
+        <span className="session-canvas__rec-dot" /> Recording
+      </span>
+    )
+  }
+
+  const active = recorder.isRecording || recording
+  const elapsed = recordingStartedAt ? now - Date.parse(recordingStartedAt) : 0
+
+  return (
+    <>
+      <button
+        className={`session-canvas__access session-canvas__record nodrag${
+          active ? ' session-canvas__record--active' : ''
+        }`}
+        onClick={active ? handleStop : handleStart}
+        disabled={busy || recorder.isSaving}
+        title={active ? 'Stop recording' : 'Record this session'}
+      >
+        {active ? (
+          <>
+            <span className="session-canvas__rec-dot" />
+            Stop · {formatElapsed(elapsed)}
+          </>
+        ) : recorder.isSaving ? (
+          'Saving…'
+        ) : (
+          '● Record'
+        )}
+      </button>
+      {recorder.error && (
+        <span className="session-canvas__rec-note session-canvas__rec-note--error">
+          {recorder.error}
+        </span>
+      )}
+      {recorder.savedId && !recorder.error && !recorder.isSaving && (
+        <span className="session-canvas__rec-note">Saved to your Media library ✓</span>
+      )}
+    </>
+  )
+}
+
 function CanvasFlow() {
   // Camera (with a placeholder so camera-off participants still get a tile) plus
   // screen share (no placeholder — a tile only appears while actively sharing).
@@ -151,6 +295,13 @@ function CanvasFlow() {
   ])
   const [nodes, setNodes, onNodesChange] = useNodesState<ParticipantFlowNode>([])
   const { fitView } = useReactFlow()
+
+  // A live ref to the current nodes, read by the recorder's draw loop so it
+  // captures the same tiles/positions the canvas is showing right now.
+  const nodesRef = useRef(nodes)
+  nodesRef.current = nodes
+  const { name: roomName } = useRoomInfo()
+  const recorder = useCanvasRecorder(nodesRef, roomName)
 
   // Known positions for every node id we've seen (from defaults, local drags, or
   // peers). A ref because it's shared, mutable state that shouldn't trigger
@@ -294,7 +445,10 @@ function CanvasFlow() {
     >
       <Background gap={24} color="#1f1f1f" />
       <Panel position="top-right">
-        <SessionControls />
+        <div className="session-canvas__controls">
+          <SessionControls />
+          <RecordingControls recorder={recorder} room={roomName} />
+        </div>
       </Panel>
       <Panel position="bottom-center">
         <ControlBar variation="minimal" />

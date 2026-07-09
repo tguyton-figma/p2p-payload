@@ -77,6 +77,7 @@ export interface Config {
     moments: Moment;
     memories: Memory;
     sessions: Session;
+    'session-recordings': SessionRecording;
     'payload-kv': PayloadKv;
     'payload-jobs': PayloadJob;
     'payload-locked-documents': PayloadLockedDocument;
@@ -94,6 +95,7 @@ export interface Config {
     moments: MomentsSelect<false> | MomentsSelect<true>;
     memories: MemoriesSelect<false> | MemoriesSelect<true>;
     sessions: SessionsSelect<false> | SessionsSelect<true>;
+    'session-recordings': SessionRecordingsSelect<false> | SessionRecordingsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-jobs': PayloadJobsSelect<false> | PayloadJobsSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
@@ -570,6 +572,45 @@ export interface Session {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "session-recordings".
+ */
+export interface SessionRecording {
+  id: string;
+  title?: string | null;
+  /**
+   * The composited canvas recording (video + mixed audio).
+   */
+  video?: (string | null) | Media;
+  host: string | Account;
+  /**
+   * LiveKit room name the recording was captured from.
+   */
+  room?: string | null;
+  status?: ('recording' | 'processing' | 'ready' | 'failed') | null;
+  /**
+   * When the host started recording.
+   */
+  startedAt: string;
+  endedAt?: string | null;
+  /**
+   * Recording length in milliseconds (client-measured).
+   */
+  durationMs?: number | null;
+  /**
+   * Snapshot of who was in the session when it was recorded.
+   */
+  participants?:
+    | {
+        identity?: string | null;
+        name?: string | null;
+        id?: string | null;
+      }[]
+    | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -719,6 +760,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'sessions';
         value: string | Session;
+      } | null)
+    | ({
+        relationTo: 'session-recordings';
+        value: string | SessionRecording;
       } | null);
   globalSlug?: string | null;
   user:
@@ -989,6 +1034,29 @@ export interface MemoriesSelect<T extends boolean = true> {
  */
 export interface SessionsSelect<T extends boolean = true> {
   status?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "session-recordings_select".
+ */
+export interface SessionRecordingsSelect<T extends boolean = true> {
+  title?: T;
+  video?: T;
+  host?: T;
+  room?: T;
+  status?: T;
+  startedAt?: T;
+  endedAt?: T;
+  durationMs?: T;
+  participants?:
+    | T
+    | {
+        identity?: T;
+        name?: T;
+        id?: T;
+      };
   updatedAt?: T;
   createdAt?: T;
 }

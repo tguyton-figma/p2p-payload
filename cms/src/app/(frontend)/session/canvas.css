@@ -110,3 +110,56 @@ button.session-canvas__access:disabled {
   background: rgba(20, 20, 20, 0.92);
   backdrop-filter: blur(8px);
 }
+
+/* Top-right controls stack (Open Session + Recording). */
+.session-canvas__controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-end;
+}
+
+/* Record button reuses the access chrome but leans red. */
+button.session-canvas__record {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+button.session-canvas__record--active {
+  border-color: #7f1d1d;
+  background: rgba(60, 20, 20, 0.92);
+}
+
+button.session-canvas__record--active:hover {
+  background: #4c1d1d;
+  border-color: #b91c1c;
+}
+
+/* Live "recording" indicator, shown to everyone via room metadata. */
+.session-canvas__rec-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+  animation: session-canvas-rec-pulse 1.4s ease-out infinite;
+  flex: none;
+}
+
+@keyframes session-canvas-rec-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6); }
+  70% { box-shadow: 0 0 0 0.5rem rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+.session-canvas__rec-note {
+  font-size: 0.75rem;
+  color: #a1a1aa;
+  max-width: 15rem;
+  text-align: right;
+}
+
+.session-canvas__rec-note--error {
+  color: #fca5a5;
+}

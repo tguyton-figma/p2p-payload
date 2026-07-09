@@ -19,6 +19,10 @@ export interface LiveKitEnv {
 export interface RoomMeta {
   openSession: boolean
   host: string // figmaId of the account that created the room
+  // Recording state, broadcast to every client via RoomMetadataChanged so all
+  // participants see the "recording" indicator. Only the host may flip it.
+  recording?: boolean
+  recordingStartedAt?: string // ISO timestamp, set when recording turns on
 }
 
 // Anonymous participants get an `anon-<uuid>` identity (authed users get their
@@ -69,7 +73,12 @@ export async function readRoomMeta(
   if (!info.metadata) return { openSession: false, host: '' }
   try {
     const parsed = JSON.parse(info.metadata) as Partial<RoomMeta>
-    return { openSession: Boolean(parsed.openSession), host: parsed.host ?? '' }
+    return {
+      openSession: Boolean(parsed.openSession),
+      host: parsed.host ?? '',
+      recording: Boolean(parsed.recording),
+      recordingStartedAt: parsed.recordingStartedAt,
+    }
   } catch {
     return { openSession: false, host: '' }
   }
