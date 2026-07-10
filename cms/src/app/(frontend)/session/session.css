@@ -150,6 +150,20 @@
   padding: 1rem;
 }
 
+/* Signed-in staging: paint the camera-off placeholder with the user's Figma
+   avatar (URL supplied via the --pp-avatar CSS variable on the wrapper) and hide
+   LiveKit's default person icon. Only applied when we have an avatar. */
+.session__prejoin--avatar .lk-camera-off-note {
+  background-image: var(--pp-avatar);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.session__prejoin--avatar .lk-camera-off-note svg {
+  display: none;
+}
+
 /* Signed-out state — centered sign-in prompt. */
 .session__signin {
   flex: 1;

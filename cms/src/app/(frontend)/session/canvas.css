@@ -29,8 +29,10 @@
   cursor: grab;
 }
 
-/* Figma profile image shown over the tile when the camera is off. Sits above
-   LiveKit's generic placeholder; pointer-events off so drags still start. */
+/* Figma profile image, mounted once and revealed only when the camera is off.
+   Visibility is driven by LiveKit's reactive `data-lk-video-muted` attribute on
+   the sibling tile — so toggling the camera never remounts/refetches the image.
+   Sits above LiveKit's generic placeholder; pointer-events off so drags start. */
 .participant-node__avatar {
   position: absolute;
   inset: 0;
@@ -38,6 +40,12 @@
   height: 100%;
   object-fit: cover;
   pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.participant-node__tile[data-lk-video-muted='true'] ~ .participant-node__avatar {
+  opacity: 1;
 }
 
 .participant-node:active {

@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { PreJoin } from '@livekit/components-react'
 import type { LocalUserChoices } from '@livekit/components-react'
 import { DisconnectReason } from 'livekit-client'
@@ -167,7 +168,18 @@ export default function SessionPage() {
           </button>
         </header>
         {error && <p className="session__error">{error}</p>}
-        <div className="session__prejoin">
+        <div
+          className={`session__prejoin${account?.figmaId ? ' session__prejoin--avatar' : ''}`}
+          // Signed-in users get their Figma avatar as the camera-off placeholder
+          // (painted onto LiveKit's .lk-camera-off-note via this CSS var).
+          style={
+            account?.figmaId
+              ? ({
+                  '--pp-avatar': `url(/api/figma/avatar?figmaId=${encodeURIComponent(account.figmaId)})`,
+                } as CSSProperties)
+              : undefined
+          }
+        >
           <PreJoin
             defaults={{
               username: account?.handle ?? '',

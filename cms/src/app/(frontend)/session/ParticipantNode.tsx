@@ -21,16 +21,17 @@ function ParticipantNodeImpl({ data }: NodeProps<ParticipantFlowNode>) {
   const trackRef = data.trackRef
   // Screen shares are landscape — give them a wider 16:9 tile than camera feeds.
   const isScreenShare = trackRef.source === Track.Source.ScreenShare
-  const [avatarFailed, setAvatarFailed] = useState(false)
-
-  // When a signed-in participant's camera is off, show their Figma profile image
-  // instead of LiveKit's generic placeholder. Guests (authenticated !== 'true')
-  // and anyone without an avatar fall back to the default.
-  const publication = 'publication' in trackRef ? trackRef.publication : undefined
-  const cameraOff = !isScreenShare && (!publication || publication.isMuted)
   const participant = trackRef.participant
   const authenticated = participant.attributes?.authenticated === 'true'
-  const showAvatar = cameraOff && authenticated && !avatarFailed
+  const [avatarFailed, setAvatarFailed] = useState(false)
+
+  // For signed-in camera tiles, mount the Figma avatar ONCE and let CSS reveal it
+  // when the camera is off — driven by the tile's reactive `data-lk-video-muted`
+  // attribute. Mounting once (rather than only while the camera is off) means it
+  // loads a single time, stays browser-cached, and toggling the camera never
+  // refetches or flickers. Guests / missing avatars fall back to LiveKit's
+  // placeholder (img errors → we stop rendering it).
+  const showAvatar = !isScreenShare && authenticated && !avatarFailed
 
   return (
     <div className={`participant-node${isScreenShare ? ' participant-node--screen' : ''}`}>
