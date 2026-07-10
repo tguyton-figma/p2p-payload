@@ -34,7 +34,11 @@ function ParticipantNodeImpl({ data }: NodeProps<ParticipantFlowNode>) {
   const showAvatar = !isScreenShare && authenticated && !avatarFailed
 
   return (
-    <div className={`participant-node${isScreenShare ? ' participant-node--screen' : ''}`}>
+    <div
+      className={`participant-node${isScreenShare ? ' participant-node--screen' : ''}${
+        showAvatar ? ' participant-node--has-avatar' : ''
+      }`}
+    >
       {/*
         The tile itself is the drag handle (the whole node moves). Interactive
         LiveKit controls inside the tile carry the `.nodrag` class so a click on

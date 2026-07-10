@@ -48,6 +48,14 @@
   opacity: 1;
 }
 
+/* When we have a Figma avatar to show, suppress LiveKit's generic person-icon
+   placeholder entirely so the tile only ever transitions between the live camera
+   feed and the avatar — never a third placeholder mid-transition. Guests (no
+   avatar) keep LiveKit's default. */
+.participant-node--has-avatar .lk-participant-placeholder {
+  display: none;
+}
+
 .participant-node:active {
   cursor: grabbing;
 }
