@@ -50,6 +50,9 @@ async function fetchToken(
 export default function SessionPage() {
   // undefined = still checking auth; null = signed out; Account = signed in.
   const [account, setAccount] = useState<Account | null | undefined>(undefined)
+  // The Figma OAuth client id (public), used as the EmbedKit `client-id` for
+  // canvas embeds. Comes from the server so we don't duplicate the env var.
+  const [figmaClientId, setFigmaClientId] = useState<string | null>(null)
   const [phase, setPhase] = useState<Phase>('idle')
   const [room, setRoom] = useState('')
   const [joinId, setJoinId] = useState('')
@@ -63,8 +66,9 @@ export default function SessionPage() {
   const loadMe = useCallback(async () => {
     try {
       const res = await fetch('/api/accounts/oauth/me', { credentials: 'include' })
-      const data = (await res.json()) as { account: Account | null }
+      const data = (await res.json()) as { account: Account | null; figmaClientId?: string | null }
       setAccount(data.account)
+      setFigmaClientId(data.figmaClientId ?? null)
     } catch {
       setAccount(null)
     }
@@ -145,7 +149,7 @@ export default function SessionPage() {
             </button>
           </div>
         </header>
-        <SessionCanvas connection={connection} onLeave={leave} />
+        <SessionCanvas connection={connection} onLeave={leave} figmaClientId={figmaClientId} />
       </div>
     )
   }

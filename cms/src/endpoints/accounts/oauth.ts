@@ -24,6 +24,12 @@ import {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const ACCOUNTS = 'accounts' as any
 
+// Scopes we request from Figma. current_user:read powers /v1/me (handle, email,
+// profile image); file_content:read powers rendering embedded Figma nodes via
+// /v1/images for session recordings. Changing this set requires existing users to
+// re-consent (sign in again) before their token carries the new grants.
+const FIGMA_SCOPES = ['current_user:read', 'file_content:read']
+
 // In-memory CSRF state store (15 min TTL).
 // Only lives for the authorize → Figma → callback round-trip — same Lambda instance.
 const pendingStates = new Map<string, {
@@ -81,7 +87,7 @@ export const accountsOAuthAuthorize: Endpoint = {
     pendingStates.set(state, { mode: 'poll', sessionId, redirectUri, createdAt: Date.now() })
 
     const authUrl = getFigmaAuthorizationUrl(config, {
-      scopes: ['current_user:read'],
+      scopes: FIGMA_SCOPES,
       state,
     })
 
@@ -121,7 +127,7 @@ export const accountsOAuthLogin: Endpoint = {
     const state = generateId(32)
     pendingStates.set(state, { mode: 'browser', redirectPath, redirectUri, createdAt: Date.now() })
 
-    const authUrl = getFigmaAuthorizationUrl(config, { scopes: ['current_user:read'], state })
+    const authUrl = getFigmaAuthorizationUrl(config, { scopes: FIGMA_SCOPES, state })
     return Response.redirect(authUrl, 302)
   },
 }
@@ -166,7 +172,7 @@ export const accountsOAuthCallback: Endpoint = {
     }
 
     try {
-      const result = await completeFigmaOAuth(config, code, ['current_user:read'])
+      const result = await completeFigmaOAuth(config, code, FIGMA_SCOPES)
 
       // Find existing account by Figma user ID
       const { docs } = await req.payload.find({
@@ -295,8 +301,13 @@ export const accountsOAuthMe: Endpoint = {
   path: '/oauth/me',
   method: 'get',
   handler: async (req) => {
+    // The Figma OAuth app's client id doubles as the EmbedKit `client-id` for
+    // canvas embeds. It's public (it already appears in the authorize URL), so
+    // we hand it to the browser here instead of duplicating it into a
+    // NEXT_PUBLIC_ variable.
+    const figmaClientId = process.env.OAUTH_CLIENT_ID ?? null
     const account = await getAccountFromRequest(req.payload, req.headers)
-    if (!account) return Response.json({ account: null })
+    if (!account) return Response.json({ account: null, figmaClientId })
     return Response.json({
       account: {
         figmaId: account.figmaId,
@@ -304,6 +315,7 @@ export const accountsOAuthMe: Endpoint = {
         email: account.email ?? null,
         avatarUrl: account.avatarUrl ?? null,
       },
+      figmaClientId,
     })
   },
 }

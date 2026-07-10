@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { FormEvent } from 'react'
 import {
   ControlBar,
   LiveKitRoom,
@@ -26,8 +27,10 @@ import {
 import type { NodeChange, NodeTypes } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { ParticipantNode } from './ParticipantNode'
-import type { ParticipantFlowNode } from './ParticipantNode'
+import { FigmaEmbedNode } from './FigmaEmbedNode'
+import type { SessionFlowNode } from './sessionNodes'
 import { useCanvasRecorder } from './useCanvasRecorder'
+import { parseFigmaUrl } from './figmaEmbed'
 import './canvas.css'
 
 // The session canvas. <LiveKitRoom> wraps <ReactFlow> so that every custom node
@@ -46,16 +49,33 @@ interface Connection {
 
 // nodeTypes must be a stable, module-scope object — React Flow re-registers (and
 // warns) if it sees a new object identity on every render.
-const nodeTypes: NodeTypes = { participant: ParticipantNode }
+const nodeTypes: NodeTypes = { participant: ParticipantNode, figmaEmbed: FigmaEmbedNode }
 
 const DATA_TOPIC = 'canvas-layout'
 
+// Default size of a freshly added Figma embed (landscape). Users can't resize yet.
+const EMBED_W = 640
+const EMBED_H = 400
+
 // --- layout sync message shapes (JSON over the data channel) ---
 type XY = { x: number; y: number }
+// A Figma embed placed on the canvas, shared verbatim with every peer.
+type EmbedSpec = {
+  id: string
+  url: string
+  name: string
+  fileKey: string
+  nodeId: string | null
+  position: XY
+  width: number
+  height: number
+}
 type LayoutMessage =
   | { type: 'move'; id: string; position: XY }
   | { type: 'request' }
-  | { type: 'state'; positions: Record<string, XY> }
+  | { type: 'state'; positions: Record<string, XY>; embeds?: EmbedSpec[] }
+  | { type: 'embed-add'; embed: EmbedSpec }
+  | { type: 'embed-remove'; id: string }
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -286,14 +306,57 @@ function RecordingControls({
   )
 }
 
-function CanvasFlow() {
+// Small input for dropping a Figma link onto the canvas. Anyone in the session
+// can add one; the embed appears for everyone. Pasting a Figma URL anywhere on
+// the canvas also works (see the paste handler), this is the discoverable path.
+function AddFigmaEmbed({ onAdd }: { onAdd: (url: string) => string | null }) {
+  const [value, setValue] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  const submit = useCallback(
+    (e: FormEvent) => {
+      e.preventDefault()
+      const err = onAdd(value)
+      if (err) {
+        setError(err)
+        return
+      }
+      setValue('')
+      setError(null)
+    },
+    [onAdd, value],
+  )
+
+  return (
+    <form className="session-canvas__embed-add nodrag" onSubmit={submit}>
+      <input
+        className="session-canvas__embed-input"
+        type="url"
+        inputMode="url"
+        placeholder="Paste a Figma link…"
+        value={value}
+        onChange={(e) => {
+          setValue(e.target.value)
+          if (error) setError(null)
+        }}
+        aria-label="Figma file link"
+      />
+      <button type="submit" className="session-canvas__embed-btn" disabled={!value.trim()}>
+        Add
+      </button>
+      {error && <span className="session-canvas__rec-note session-canvas__rec-note--error">{error}</span>}
+    </form>
+  )
+}
+
+function CanvasFlow({ figmaClientId }: { figmaClientId?: string | null }) {
   // Camera (with a placeholder so camera-off participants still get a tile) plus
   // screen share (no placeholder — a tile only appears while actively sharing).
   const tracks = useTracks([
     { source: Track.Source.Camera, withPlaceholder: true },
     { source: Track.Source.ScreenShare, withPlaceholder: false },
   ])
-  const [nodes, setNodes, onNodesChange] = useNodesState<ParticipantFlowNode>([])
+  const [nodes, setNodes, onNodesChange] = useNodesState<SessionFlowNode>([])
   const { fitView } = useReactFlow()
 
   // A live ref to the current nodes, read by the recorder's draw loop so it
@@ -307,12 +370,92 @@ function CanvasFlow() {
   // peers). A ref because it's shared, mutable state that shouldn't trigger
   // renders on its own — the nodes array is the render source of truth.
   const positionsRef = useRef<Record<string, XY>>({})
+  // Figma embeds on the canvas, keyed by node id. Source of truth for embeds the
+  // same way tracks are for participant tiles; the reconcile effect and add/remove
+  // handlers keep the nodes array in sync with this.
+  const embedsRef = useRef<Record<string, EmbedSpec>>({})
   // Latest tracks, read by the reconcile effect (keyed on a light signature).
   const tracksRef = useRef(tracks)
   tracksRef.current = tracks
   // `send` lives in a ref so the message handler can reply to `request` without
   // creating a circular dependency with useDataChannel (which takes the handler).
   const sendRef = useRef<((p: Uint8Array, o: { reliable: boolean }) => Promise<void>) | null>(null)
+
+  // --- figma embeds: apply locally, mirror to the nodes array, broadcast ---
+  const applyEmbedRemove = useCallback(
+    (id: string) => {
+      if (!embedsRef.current[id]) return
+      delete embedsRef.current[id]
+      delete positionsRef.current[id]
+      setNodes((prev) => prev.filter((n) => n.id !== id))
+    },
+    [setNodes],
+  )
+
+  const removeEmbed = useCallback(
+    (id: string) => {
+      applyEmbedRemove(id)
+      void sendRef.current?.(encode({ type: 'embed-remove', id }), { reliable: true })
+    },
+    [applyEmbedRemove],
+  )
+
+  // Build a React Flow node from an embed spec. `onRemove` is injected here (never
+  // sent over the wire); the header is the drag handle so the iframe stays live.
+  const buildEmbedNode = useCallback(
+    (spec: EmbedSpec): SessionFlowNode => {
+      const position = positionsRef.current[spec.id] ?? spec.position
+      positionsRef.current[spec.id] = position
+      return {
+        id: spec.id,
+        type: 'figmaEmbed',
+        position,
+        dragHandle: '.figma-embed-node__header',
+        style: { width: spec.width, height: spec.height },
+        data: {
+          url: spec.url,
+          name: spec.name,
+          fileKey: spec.fileKey,
+          nodeId: spec.nodeId,
+          onRemove: () => removeEmbed(spec.id),
+        },
+      }
+    },
+    [removeEmbed],
+  )
+
+  const applyEmbedAdd = useCallback(
+    (spec: EmbedSpec) => {
+      if (embedsRef.current[spec.id]) return
+      embedsRef.current[spec.id] = spec
+      setNodes((prev) => (prev.some((n) => n.id === spec.id) ? prev : [...prev, buildEmbedNode(spec)]))
+    },
+    [buildEmbedNode, setNodes],
+  )
+
+  // Add an embed from a pasted string; returns an error message, or null on success.
+  const addEmbed = useCallback(
+    (raw: string): string | null => {
+      const parsed = parseFigmaUrl(raw, { clientId: figmaClientId })
+      if (!parsed) return 'That doesn’t look like a Figma link.'
+      const count = Object.keys(embedsRef.current).length
+      const spec: EmbedSpec = {
+        id: `embed/${crypto.randomUUID()}`,
+        url: parsed.url,
+        name: parsed.name,
+        fileKey: parsed.fileKey,
+        nodeId: parsed.nodeId,
+        // Cascade new embeds above the participant grid so they don't stack exactly.
+        position: { x: 380 + count * 48, y: -(EMBED_H + 80) + count * 48 },
+        width: EMBED_W,
+        height: EMBED_H,
+      }
+      applyEmbedAdd(spec)
+      void sendRef.current?.(encode({ type: 'embed-add', embed: spec }), { reliable: true })
+      return null
+    },
+    [applyEmbedAdd, figmaClientId],
+  )
 
   // --- data channel: broadcast local moves, apply remote moves, answer late joiners ---
   const handleMessage = useCallback(
@@ -335,15 +478,26 @@ function CanvasFlow() {
             n.id in positionsRef.current ? { ...n, position: positionsRef.current[n.id] } : n,
           ),
         )
+        // Adopt any embeds we don't already have.
+        if (data.embeds) for (const spec of data.embeds) applyEmbedAdd(spec)
+      } else if (data.type === 'embed-add') {
+        applyEmbedAdd(data.embed)
+      } else if (data.type === 'embed-remove') {
+        applyEmbedRemove(data.id)
       } else if (data.type === 'request') {
         // A peer just joined and wants the current layout. Reply with everything
         // we know; several peers answering is fine (self-healing, LWW merge).
-        void sendRef.current?.(encode({ type: 'state', positions: positionsRef.current }), {
-          reliable: true,
-        })
+        void sendRef.current?.(
+          encode({
+            type: 'state',
+            positions: positionsRef.current,
+            embeds: Object.values(embedsRef.current),
+          }),
+          { reliable: true },
+        )
       }
     },
-    [setNodes],
+    [setNodes, applyEmbedAdd, applyEmbedRemove],
   )
 
   const { send } = useDataChannel(DATA_TOPIC, handleMessage)
@@ -367,10 +521,16 @@ function CanvasFlow() {
     // Stable ordering so grid slots are consistent across clients.
     const sortedIds = [...wanted.keys()].sort()
     setNodes((prev) => {
-      // Update/keep existing nodes; drop nodes whose participant left.
-      const next: ParticipantFlowNode[] = prev
-        .filter((n) => wanted.has(n.id))
-        .map((n) => ({ ...n, data: { trackRef: wanted.get(n.id)! } }))
+      // Keep participant nodes whose track is still live (drop those who left);
+      // keep embed nodes that still exist in embedsRef.
+      const next: SessionFlowNode[] = []
+      for (const n of prev) {
+        if (n.type === 'participant') {
+          if (wanted.has(n.id)) next.push({ ...n, data: { trackRef: wanted.get(n.id)! } })
+        } else if (embedsRef.current[n.id]) {
+          next.push(n)
+        }
+      }
       const existing = new Set(next.map((n) => n.id))
       // Add nodes for new tracks, reusing a known position (default/drag/peer) or
       // slotting into the compact grid by sorted order.
@@ -379,6 +539,13 @@ function CanvasFlow() {
         const position = positionsRef.current[id] ?? gridPosition(sortedIds.indexOf(id))
         positionsRef.current[id] = position
         next.push({ id, type: 'participant', position, data: { trackRef: t } })
+      }
+      // Re-add any embeds missing from the array (e.g. adopted from a peer before
+      // this array existed).
+      for (const spec of Object.values(embedsRef.current)) {
+        if (existing.has(spec.id)) continue
+        next.push(buildEmbedNode(spec))
+        existing.add(spec.id)
       }
       return next
     })
@@ -412,7 +579,7 @@ function CanvasFlow() {
 
   // --- broadcast local drags ---
   const onNodesChangeSync = useCallback(
-    (changes: NodeChange<ParticipantFlowNode>[]) => {
+    (changes: NodeChange<SessionFlowNode>[]) => {
       onNodesChange(changes)
       for (const c of changes) {
         // Broadcast the final resting position when a drag ends.
@@ -424,6 +591,23 @@ function CanvasFlow() {
     },
     [onNodesChange, send],
   )
+
+  // Paste a Figma link anywhere on the canvas to drop an embed. Ignore pastes
+  // aimed at a text field (the add-embed input handles those itself).
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const el = e.target as HTMLElement | null
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) {
+        return
+      }
+      const text = e.clipboardData?.getData('text') ?? ''
+      if (!parseFigmaUrl(text)) return
+      e.preventDefault()
+      addEmbed(text)
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [addEmbed])
 
   return (
     <ReactFlow
@@ -448,6 +632,7 @@ function CanvasFlow() {
         <div className="session-canvas__controls">
           <SessionControls />
           <RecordingControls recorder={recorder} room={roomName} />
+          <AddFigmaEmbed onAdd={addEmbed} />
         </div>
       </Panel>
       <Panel position="bottom-center">
@@ -460,9 +645,11 @@ function CanvasFlow() {
 export default function SessionCanvas({
   connection,
   onLeave,
+  figmaClientId,
 }: {
   connection: Connection
   onLeave: (reason?: DisconnectReason) => void
+  figmaClientId?: string | null
 }) {
   return (
     <LiveKitRoom
@@ -479,7 +666,7 @@ export default function SessionCanvas({
           duplicate/echo). */}
       <RoomAudioRenderer />
       <ReactFlowProvider>
-        <CanvasFlow />
+        <CanvasFlow figmaClientId={figmaClientId} />
       </ReactFlowProvider>
     </LiveKitRoom>
   )
