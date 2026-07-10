@@ -1,21 +1,25 @@
 #!/bin/bash
 set -e
 
-HEALTHCHECK_ENDPOINT='http://localhost:3000'
+# Verify the preview target is reachable. Since we point the preview at
+# production (FIGMA_MAKE_URL in ./env) instead of a local dev server, this
+# health-checks that URL.
+source "$(dirname "$0")/env"
+HEALTHCHECK_ENDPOINT="${FIGMA_MAKE_URL:-https://p2p-payload.figma.site}"
 MAX_WAIT=90
 INTERVAL=3
 ELAPSED=0
 
-echo "Waiting for dev server at $HEALTHCHECK_ENDPOINT ..."
+echo "Waiting for preview target at $HEALTHCHECK_ENDPOINT ..."
 
 while [ $ELAPSED -lt $MAX_WAIT ]; do
   if curl -sf -o /dev/null "$HEALTHCHECK_ENDPOINT"; then
-    echo "Dev server is up."
+    echo "Preview target is up."
     exit 0
   fi
   sleep $INTERVAL
   ELAPSED=$((ELAPSED + INTERVAL))
 done
 
-echo "Error: Dev server did not start within ${MAX_WAIT}s"
+echo "Error: Preview target ($HEALTHCHECK_ENDPOINT) was not reachable within ${MAX_WAIT}s"
 exit 1

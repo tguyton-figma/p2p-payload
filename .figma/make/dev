@@ -1,6 +1,9 @@
 #!/bin/bash
-set -e
-
-cd cms
-echo "Starting Next.js dev server..."
-pnpm dev
+# Local dev server intentionally disabled — the Make preview points at
+# production (FIGMA_MAKE_URL in ./env). We develop and verify against prod.
+#
+# Kept as a long-running no-op so the session lifecycle treats "dev" as up
+# without starting a local Next.js server. To re-enable the local server,
+# replace the exec line below with:  cd cms && pnpm dev
+echo "Local dev server disabled; preview uses production (FIGMA_MAKE_URL)."
+exec tail -f /dev/null
