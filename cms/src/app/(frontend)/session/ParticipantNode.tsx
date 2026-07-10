@@ -1,6 +1,6 @@
 'use client'
 
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import { ParticipantTile } from '@livekit/components-react'
 import type { TrackReferenceOrPlaceholder } from '@livekit/components-react'
 import { Track } from 'livekit-client'
@@ -18,8 +18,20 @@ export type ParticipantNodeData = { trackRef: TrackReferenceOrPlaceholder }
 export type ParticipantFlowNode = Node<ParticipantNodeData, 'participant'>
 
 function ParticipantNodeImpl({ data }: NodeProps<ParticipantFlowNode>) {
+  const trackRef = data.trackRef
   // Screen shares are landscape — give them a wider 16:9 tile than camera feeds.
-  const isScreenShare = data.trackRef.source === Track.Source.ScreenShare
+  const isScreenShare = trackRef.source === Track.Source.ScreenShare
+  const [avatarFailed, setAvatarFailed] = useState(false)
+
+  // When a signed-in participant's camera is off, show their Figma profile image
+  // instead of LiveKit's generic placeholder. Guests (authenticated !== 'true')
+  // and anyone without an avatar fall back to the default.
+  const publication = 'publication' in trackRef ? trackRef.publication : undefined
+  const cameraOff = !isScreenShare && (!publication || publication.isMuted)
+  const participant = trackRef.participant
+  const authenticated = participant.attributes?.authenticated === 'true'
+  const showAvatar = cameraOff && authenticated && !avatarFailed
+
   return (
     <div className={`participant-node${isScreenShare ? ' participant-node--screen' : ''}`}>
       {/*
@@ -27,7 +39,16 @@ function ParticipantNodeImpl({ data }: NodeProps<ParticipantFlowNode>) {
         LiveKit controls inside the tile carry the `.nodrag` class so a click on
         them doesn't start a node drag.
       */}
-      <ParticipantTile trackRef={data.trackRef} className="participant-node__tile" />
+      <ParticipantTile trackRef={trackRef} className="participant-node__tile" />
+      {showAvatar && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          className="participant-node__avatar"
+          src={`/api/figma/avatar?figmaId=${encodeURIComponent(participant.identity)}`}
+          alt=""
+          onError={() => setAvatarFailed(true)}
+        />
+      )}
     </div>
   )
 }

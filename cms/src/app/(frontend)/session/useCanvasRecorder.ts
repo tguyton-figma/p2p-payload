@@ -123,6 +123,8 @@ export function useCanvasRecorder(
   const videosRef = useRef<Map<string, { el: HTMLMediaElement; sid: string }>>(new Map())
   // embedId -> cached same-origin Figma render (snapshot at first sight).
   const embedImagesRef = useRef<Map<string, EmbedImage>>(new Map())
+  // participant identity -> cached same-origin Figma avatar (camera-off placeholder).
+  const avatarImagesRef = useRef<Map<string, EmbedImage>>(new Map())
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const audioCtxRef = useRef<AudioContext | null>(null)
@@ -233,6 +235,40 @@ export function useCanvasRecorder(
     }
   }, [])
 
+  // Load each authenticated participant's Figma avatar once (same-origin, so it
+  // never taints the canvas). Used as the camera-off placeholder. Guests
+  // (authenticated !== 'true') keep the initials placeholder.
+  const syncAvatars = useCallback((participants: ParticipantFlowNode[]) => {
+    const map = avatarImagesRef.current
+    const seen = new Set<string>()
+    for (const node of participants) {
+      const t = node.data.trackRef
+      if (t.source !== Track.Source.Camera) continue
+      if (t.participant.attributes?.authenticated !== 'true') continue
+      const id = t.participant.identity
+      seen.add(id)
+      if (map.has(id)) continue
+      const entry: EmbedImage = { img: new Image(), status: 'loading' }
+      entry.img.onload = () => {
+        const e = map.get(id)
+        if (e) e.status = 'ready'
+      }
+      entry.img.onerror = () => {
+        const e = map.get(id)
+        if (e) e.status = 'error'
+      }
+      entry.img.src = `/api/figma/avatar?figmaId=${encodeURIComponent(id)}`
+      map.set(id, entry)
+    }
+    for (const [id, entry] of map) {
+      if (!seen.has(id)) {
+        entry.img.onload = null
+        entry.img.onerror = null
+        map.delete(id)
+      }
+    }
+  }, [])
+
   const draw = useCallback(() => {
     const canvas = canvasRef.current
     const ctx = canvas?.getContext('2d')
@@ -242,6 +278,7 @@ export function useCanvasRecorder(
     const embeds = all.filter(isFigmaEmbedNode)
     syncVideos(participants)
     syncEmbeds(embeds)
+    syncAvatars(participants)
 
     ctx.fillStyle = '#0b0b0c'
     ctx.fillRect(0, 0, OUT_W, OUT_H)
@@ -299,15 +336,24 @@ export function useCanvasRecorder(
             drawCover(ctx, el, dx, dy, dw, dh)
             ctx.restore()
           } else {
-            // Camera off / not yet playing — placeholder with initials.
-            ctx.fillStyle = '#1b1b1f'
-            ctx.fill()
-            const name = displayName(node.data.trackRef.participant)
-            ctx.fillStyle = '#8a8a93'
-            ctx.font = `${Math.round(Math.min(dw, dh) * 0.28)}px sans-serif`
-            ctx.textAlign = 'center'
-            ctx.textBaseline = 'middle'
-            ctx.fillText(initials(name), dx + dw / 2, dy + dh / 2)
+            // Camera off — the participant's Figma avatar if we have it, else
+            // an initials placeholder.
+            const avatar = avatarImagesRef.current.get(node.data.trackRef.participant.identity)
+            if (avatar?.status === 'ready' && avatar.img.naturalWidth > 0) {
+              ctx.save()
+              ctx.clip()
+              drawCoverImage(ctx, avatar.img, dx, dy, dw, dh)
+              ctx.restore()
+            } else {
+              ctx.fillStyle = '#1b1b1f'
+              ctx.fill()
+              const name = displayName(node.data.trackRef.participant)
+              ctx.fillStyle = '#8a8a93'
+              ctx.font = `${Math.round(Math.min(dw, dh) * 0.28)}px sans-serif`
+              ctx.textAlign = 'center'
+              ctx.textBaseline = 'middle'
+              ctx.fillText(initials(name), dx + dw / 2, dy + dh / 2)
+            }
           }
           drawNameLabel(ctx, displayName(node.data.trackRef.participant), dx, dy, dw, dh, scale)
         } else {
@@ -338,7 +384,7 @@ export function useCanvasRecorder(
     }
 
     rafRef.current = requestAnimationFrame(draw)
-  }, [nodesRef, syncVideos, syncEmbeds])
+  }, [nodesRef, syncVideos, syncEmbeds, syncAvatars])
 
   // --- lifecycle ----------------------------------------------------------
 
@@ -353,6 +399,11 @@ export function useCanvasRecorder(
       entry.img.onerror = null
     }
     embedImagesRef.current.clear()
+    for (const [, entry] of avatarImagesRef.current) {
+      entry.img.onload = null
+      entry.img.onerror = null
+    }
+    avatarImagesRef.current.clear()
     audioTrackIdsRef.current.clear()
     if (audioCtxRef.current) {
       audioCtxRef.current.close().catch(() => {})
@@ -544,6 +595,26 @@ function drawContain(
   const w = iw * scale
   const h = ih * scale
   ctx.drawImage(img, dx + (dw - w) / 2, dy + (dh - h) / 2, w, h)
+}
+
+/** Draw an image with object-fit: cover into the dest rect. */
+function drawCoverImage(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  dx: number,
+  dy: number,
+  dw: number,
+  dh: number,
+) {
+  const iw = img.naturalWidth
+  const ih = img.naturalHeight
+  if (!iw || !ih) return
+  const scale = Math.max(dw / iw, dh / ih)
+  const sw = dw / scale
+  const sh = dh / scale
+  const sx = (iw - sw) / 2
+  const sy = (ih - sh) / 2
+  ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh)
 }
 
 /** Draw a video frame with object-fit: cover into the dest rect. */

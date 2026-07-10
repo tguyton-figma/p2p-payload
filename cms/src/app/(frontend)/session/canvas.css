@@ -18,6 +18,7 @@
 
 /* Participant tile node. React Flow measures this box for layout/fit-view. */
 .participant-node {
+  position: relative;
   width: 320px;
   height: 240px;
   border: 1px solid #262626;
@@ -26,6 +27,17 @@
   background: #111;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   cursor: grab;
+}
+
+/* Figma profile image shown over the tile when the camera is off. Sits above
+   LiveKit's generic placeholder; pointer-events off so drags still start. */
+.participant-node__avatar {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
 }
 
 .participant-node:active {
