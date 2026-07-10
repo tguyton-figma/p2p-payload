@@ -29,7 +29,16 @@ export const Accounts: CollectionConfig = {
       {
         name: 'account-session',
         authenticate: async ({ headers, payload }) => {
-          const token = parseCookies(headers).get(PP_ACCOUNT_COOKIE)
+          const cookies = parseCookies(headers)
+          // Defer to a Payload admin (Users) session when one is present. The
+          // admin panel is served on the same host as the app, so its requests
+          // also carry the `pp_account` cookie — without this, signing into the
+          // app would authenticate an admin as an Account (which has no roles)
+          // and lock them out of the admin panel. App requests still resolve the
+          // account via getAccountFromRequest's direct-cookie fallback, so this
+          // only changes who wins for admin auth.
+          if (cookies.get('payload-token')) return { user: null }
+          const token = cookies.get(PP_ACCOUNT_COOKIE)
           if (!token) return { user: null }
           const { docs } = await payload.find({
             collection: 'accounts',
