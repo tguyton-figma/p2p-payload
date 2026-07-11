@@ -3,17 +3,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import {
-  ControlBar,
+  DisconnectButton,
   LiveKitRoom,
   RoomAudioRenderer,
   useConnectionState,
   useDataChannel,
   useLocalParticipant,
+  useMediaDeviceSelect,
   useRoomInfo,
   useTracks,
 } from '@livekit/components-react'
 import type { LocalUserChoices, TrackReferenceOrPlaceholder } from '@livekit/components-react'
-import { ConnectionState, Track } from 'livekit-client'
+import {
+  ConnectionState,
+  LocalVideoTrack,
+  Track,
+  createLocalAudioTrack,
+  createLocalVideoTrack,
+} from 'livekit-client'
 import type { DisconnectReason } from 'livekit-client'
 import {
   Background,
@@ -26,9 +33,11 @@ import {
 } from '@xyflow/react'
 import type { NodeChange, NodeTypes } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { ParticipantNode } from './ParticipantNode'
+import { MediaNode } from './MediaNode'
+import type { MediaNodeData } from './MediaNode'
 import { FigmaEmbedNode } from './FigmaEmbedNode'
 import type { SessionFlowNode } from './sessionNodes'
+import { mediaNodeId, mediaNodeSig, mediaTrackName, trackName } from './mediaTracks'
 import { useCanvasRecorder } from './useCanvasRecorder'
 import { parseFigmaUrl } from './figmaEmbed'
 import './canvas.css'
@@ -36,9 +45,14 @@ import './canvas.css'
 // The session canvas. <LiveKitRoom> wraps <ReactFlow> so that every custom node
 // is a descendant of the room context — LiveKit hooks/components inside nodes
 // (video tiles, mute state) just work, and React Flow mounting/unmounting tiles
-// as they scroll in and out of view never touches the connection. Each
-// participant's camera is a draggable node; positions are shared across everyone
-// over LiveKit's data channel, so moving a tile moves it for all peers.
+// as they scroll in and out of view never touches the connection.
+//
+// The canvas is the single source of truth for what a participant publishes:
+// there is no privileged "primary" camera/mic and no control bar of toggles.
+// Every feed on the canvas is a track someone added — adding a node publishes a
+// track, removing it unpublishes. Each feed is a draggable node; positions are
+// shared across everyone over LiveKit's data channel, so moving a tile moves it
+// for all peers.
 
 interface Connection {
   room: string
@@ -49,7 +63,7 @@ interface Connection {
 
 // nodeTypes must be a stable, module-scope object — React Flow re-registers (and
 // warns) if it sees a new object identity on every render.
-const nodeTypes: NodeTypes = { participant: ParticipantNode, figmaEmbed: FigmaEmbedNode }
+const nodeTypes: NodeTypes = { media: MediaNode, figmaEmbed: FigmaEmbedNode }
 
 const DATA_TOPIC = 'canvas-layout'
 
@@ -87,15 +101,6 @@ const decode = (bytes: Uint8Array): LayoutMessage | null => {
     return null
   }
 }
-
-// Stable node id — one tile per (participant, source), so a participant can have
-// both a camera node and a screen-share node. Placeholders (camera off) keep the
-// same id, so a tile persists as a participant toggles their camera.
-const nodeId = (t: TrackReferenceOrPlaceholder) => `${t.participant.identity}/${t.source}`
-// A signature that also changes when a placeholder becomes a real track, so the
-// reconcile effect refreshes the tile's trackRef.
-const nodeSig = (t: TrackReferenceOrPlaceholder) =>
-  `${nodeId(t)}:${'publication' in t && t.publication ? t.publication.trackSid : 'ph'}`
 
 // Compact default placement: lay tiles out in a tidy grid near the origin,
 // slotted by the participant's position in the sorted id list. Sorting makes it
@@ -227,7 +232,7 @@ function RecordingControls({
   const handleStart = useCallback(async () => {
     setBusy(true)
     try {
-      recorder.start()
+      await recorder.start()
       await setRecordingState(true)
     } finally {
       setBusy(false)
@@ -349,13 +354,115 @@ function AddFigmaEmbed({ onAdd }: { onAdd: (url: string) => string | null }) {
   )
 }
 
-function CanvasFlow({ figmaClientId }: { figmaClientId?: string | null }) {
-  // Camera (with a placeholder so camera-off participants still get a tile) plus
-  // screen share (no placeholder — a tile only appears while actively sharing).
+// The one way feeds get onto the canvas: pick a camera or mic to publish, or
+// share a screen. Devices already publishing are hidden so you can't double-add.
+// This is the whole "control bar" now — presence of a node is the published state.
+function AddMediaControl({
+  onAddDevice,
+  onAddScreen,
+}: {
+  onAddDevice: (kind: 'videoinput' | 'audioinput', deviceId: string, label: string) => Promise<void>
+  onAddScreen: () => Promise<void>
+}) {
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const { localParticipant } = useLocalParticipant()
+  const cameras = useMediaDeviceSelect({ kind: 'videoinput' })
+  const mics = useMediaDeviceSelect({ kind: 'audioinput' })
+
+  // Device ids we're already publishing — offer the rest.
+  const usedDeviceIds = new Set<string>()
+  for (const pub of localParticipant.trackPublications.values()) {
+    const id = pub.track?.mediaStreamTrack.getSettings().deviceId
+    if (id) usedDeviceIds.add(id)
+  }
+
+  const run = useCallback(async (fn: () => Promise<void>) => {
+    setBusy(true)
+    try {
+      await fn()
+      setOpen(false)
+    } finally {
+      setBusy(false)
+    }
+  }, [])
+
+  const group = (
+    kind: 'videoinput' | 'audioinput',
+    heading: string,
+    devices: MediaDeviceInfo[],
+  ) => {
+    const available = devices.filter((d) => d.deviceId && !usedDeviceIds.has(d.deviceId))
+    if (available.length === 0) return null
+    return (
+      <div className="session-canvas__add-group">
+        <div className="session-canvas__add-heading">{heading}</div>
+        {available.map((d) => (
+          <button
+            key={d.deviceId}
+            type="button"
+            className="session-canvas__add-item nodrag"
+            disabled={busy}
+            onClick={() => void run(() => onAddDevice(kind, d.deviceId, d.label))}
+          >
+            {d.label || (kind === 'videoinput' ? 'Camera' : 'Microphone')}
+          </button>
+        ))}
+      </div>
+    )
+  }
+
+  const cameraGroup = group('videoinput', 'Cameras', cameras.devices)
+  const micGroup = group('audioinput', 'Microphones', mics.devices)
+
+  return (
+    <div className="session-canvas__add nodrag">
+      <button
+        type="button"
+        className="session-canvas__add-toggle"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        title="Add a camera, microphone, or screen"
+      >
+        ＋ Add feed
+      </button>
+      {open && (
+        <div className="session-canvas__add-menu">
+          {cameraGroup}
+          {micGroup}
+          <div className="session-canvas__add-group">
+            <div className="session-canvas__add-heading">Screen</div>
+            <button
+              type="button"
+              className="session-canvas__add-item nodrag"
+              disabled={busy}
+              onClick={() => void run(onAddScreen)}
+            >
+              Share a screen
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CanvasFlow({
+  choices,
+  figmaClientId,
+}: {
+  choices: LocalUserChoices
+  figmaClientId?: string | null
+}) {
+  // Every published track becomes a node — no placeholders, because there's no
+  // implicit "you always have a camera slot" any more. A source with no track
+  // simply has no node.
   const tracks = useTracks([
-    { source: Track.Source.Camera, withPlaceholder: true },
+    { source: Track.Source.Camera, withPlaceholder: false },
     { source: Track.Source.ScreenShare, withPlaceholder: false },
+    { source: Track.Source.Microphone, withPlaceholder: false },
   ])
+  const { localParticipant } = useLocalParticipant()
   const [nodes, setNodes, onNodesChange] = useNodesState<SessionFlowNode>([])
   const { fitView } = useReactFlow()
 
@@ -514,19 +621,134 @@ function CanvasFlow({ figmaClientId }: { figmaClientId?: string | null }) {
     }
   }, [connectionState, send])
 
-  // --- reconcile LiveKit tracks -> React Flow nodes (preserving positions) ---
-  const trackSig = tracks.map(nodeSig).join('|')
+  // --- publishing: adding a feed IS publishing a track ----------------------
+  // We publish every track ourselves with a name we control, so its node id is
+  // stable for the track's life and peers can read a human label. LiveKit fans
+  // the track out to everyone; the reconcile effect below turns it into a node on
+  // every client. Nothing is "primary" — this is the only path media gets here.
+  const addDevice = useCallback(
+    async (kind: 'videoinput' | 'audioinput', deviceId: string, label: string) => {
+      const idc = deviceId ? { deviceId: { exact: deviceId } } : undefined
+      if (kind === 'videoinput') {
+        const track = await createLocalVideoTrack(idc)
+        await localParticipant.publishTrack(track, {
+          name: mediaTrackName(label || 'Camera'),
+          source: Track.Source.Camera,
+        })
+      } else {
+        const track = await createLocalAudioTrack(idc)
+        await localParticipant.publishTrack(track, {
+          name: mediaTrackName(label || 'Microphone'),
+          source: Track.Source.Microphone,
+        })
+      }
+    },
+    [localParticipant],
+  )
+
+  // Share a screen: grab a display stream and publish it as a screen-share track.
+  // If the user stops sharing from the browser's native UI, the track ends — we
+  // unpublish so the node disappears in lockstep.
+  const addScreen = useCallback(async () => {
+    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true })
+    const [msTrack] = stream.getVideoTracks()
+    if (!msTrack) return
+    const track = new LocalVideoTrack(msTrack)
+    msTrack.addEventListener('ended', () => {
+      void localParticipant.unpublishTrack(track, true).catch(() => {})
+    })
+    await localParticipant.publishTrack(track, {
+      name: mediaTrackName('Screen'),
+      source: Track.Source.ScreenShare,
+    })
+  }, [localParticipant])
+
+  // Find one of our own publications by the name we assigned it.
+  const findLocalPub = useCallback(
+    (name: string) => {
+      for (const pub of localParticipant.trackPublications.values()) {
+        if (pub.trackName === name) return pub
+      }
+      return undefined
+    },
+    [localParticipant],
+  )
+
+  // Mute/unmute keeps the track published (fast toggle); remove unpublishes it.
+  // Both act on the local participant's own feeds only. useTracks updates for
+  // everyone on unpublish, so a removed node disappears on every client.
+  const toggleMute = useCallback(
+    async (name: string) => {
+      const track = findLocalPub(name)?.track
+      if (!track) return
+      if (track.isMuted) await track.unmute()
+      else await track.mute()
+    },
+    [findLocalPub],
+  )
+
+  const removeTrack = useCallback(
+    async (name: string) => {
+      const track = findLocalPub(name)?.track
+      if (track) await localParticipant.unpublishTrack(track, true)
+    },
+    [findLocalPub, localParticipant],
+  )
+
+  // Build a media node's data from a track reference. The local participant's own
+  // feeds get on-node mute + remove controls; screen shares get remove only.
+  const mediaData = useCallback(
+    (t: TrackReferenceOrPlaceholder): MediaNodeData => {
+      if (!t.participant.isLocal) return { trackRef: t, local: false }
+      const name = trackName(t)
+      const isScreen = t.source === Track.Source.ScreenShare
+      return {
+        trackRef: t,
+        local: true,
+        onRemove: name ? () => void removeTrack(name) : undefined,
+        onToggleMute: name && !isScreen ? () => void toggleMute(name) : undefined,
+      }
+    },
+    [removeTrack, toggleMute],
+  )
+
+  // Seed the local participant's chosen prejoin devices as their first feeds,
+  // once, on connect. There's no auto-published primary track — these are regular
+  // nodes like any other, they just happen to be added for you at join time.
+  const seededRef = useRef(false)
   useEffect(() => {
-    const wanted = new Map(tracksRef.current.map((t) => [nodeId(t), t]))
+    if (connectionState !== ConnectionState.Connected || seededRef.current) return
+    seededRef.current = true
+    void (async () => {
+      if (choices.videoEnabled) {
+        await addDevice('videoinput', choices.videoDeviceId ?? '', 'Camera').catch(() => {})
+      }
+      if (choices.audioEnabled) {
+        await addDevice('audioinput', choices.audioDeviceId ?? '', 'Microphone').catch(() => {})
+      }
+    })()
+  }, [connectionState, choices, addDevice])
+
+  // --- reconcile LiveKit tracks -> React Flow nodes (preserving positions) ---
+  const trackSig = tracks.map(mediaNodeSig).join('|')
+  useEffect(() => {
+    // Every published track gets a node (cameras, screen shares, and mics — mics
+    // render as compact audio cards). RoomAudioRenderer still handles playback and
+    // the recorder still mixes all mics regardless of nodes.
+    const wanted = new Map<string, TrackReferenceOrPlaceholder>()
+    for (const t of tracksRef.current) {
+      wanted.set(mediaNodeId(t), t)
+    }
     // Stable ordering so grid slots are consistent across clients.
     const sortedIds = [...wanted.keys()].sort()
     setNodes((prev) => {
-      // Keep participant nodes whose track is still live (drop those who left);
+      // Keep media nodes whose track is still live (drop those who left);
       // keep embed nodes that still exist in embedsRef.
       const next: SessionFlowNode[] = []
       for (const n of prev) {
-        if (n.type === 'participant') {
-          if (wanted.has(n.id)) next.push({ ...n, data: { trackRef: wanted.get(n.id)! } })
+        if (n.type === 'media') {
+          const t = wanted.get(n.id)
+          if (t) next.push({ ...n, data: mediaData(t) })
         } else if (embedsRef.current[n.id]) {
           next.push(n)
         }
@@ -538,7 +760,7 @@ function CanvasFlow({ figmaClientId }: { figmaClientId?: string | null }) {
         if (existing.has(id)) continue
         const position = positionsRef.current[id] ?? gridPosition(sortedIds.indexOf(id))
         positionsRef.current[id] = position
-        next.push({ id, type: 'participant', position, data: { trackRef: t } })
+        next.push({ id, type: 'media', position, data: mediaData(t) })
       }
       // Re-add any embeds missing from the array (e.g. adopted from a peer before
       // this array existed).
@@ -550,7 +772,7 @@ function CanvasFlow({ figmaClientId }: { figmaClientId?: string | null }) {
       return next
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trackSig, setNodes])
+  }, [trackSig, setNodes, mediaData])
 
   // Auto-fit camera: keep every tile framed in the viewport, re-fitting whenever
   // the canvas geometry settles — a participant joins/leaves, a drag ends, or a
@@ -636,7 +858,10 @@ function CanvasFlow({ figmaClientId }: { figmaClientId?: string | null }) {
         </div>
       </Panel>
       <Panel position="bottom-center">
-        <ControlBar variation="minimal" />
+        <div className="session-canvas__dock">
+          <AddMediaControl onAddDevice={addDevice} onAddScreen={addScreen} />
+          <DisconnectButton className="session-canvas__leave nodrag">Leave</DisconnectButton>
+        </div>
       </Panel>
     </ReactFlow>
   )
@@ -657,8 +882,11 @@ export default function SessionCanvas({
       token={connection.token}
       serverUrl={connection.url}
       connect
-      video={connection.choices.videoEnabled}
-      audio={connection.choices.audioEnabled}
+      // Don't auto-publish a "primary" camera/mic on connect — the canvas owns
+      // publishing. Prejoin device choices are seeded as normal nodes once the
+      // room connects (see CanvasFlow).
+      video={false}
+      audio={false}
       data-lk-theme="default"
       onDisconnected={onLeave}
     >
@@ -666,7 +894,7 @@ export default function SessionCanvas({
           duplicate/echo). */}
       <RoomAudioRenderer />
       <ReactFlowProvider>
-        <CanvasFlow figmaClientId={figmaClientId} />
+        <CanvasFlow choices={connection.choices} figmaClientId={figmaClientId} />
       </ReactFlowProvider>
     </LiveKitRoom>
   )
