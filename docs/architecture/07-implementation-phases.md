@@ -1,5 +1,12 @@
 # 07 — Implementation Phases
 
+> **Reconciled with DECISIONS.md (2026-07-12):**
+> - **Build ORDER (Q10) is explicitly DEFERRED** — too early. The phases below are a *dependency map*, not a committed sequence. Do not treat the numbering as the plan.
+> - **New foundational work not yet phased here** (from Round 2): the **CQRS event architecture** (spec 04 — the persistent/ephemeral planes + log) underpins nearly everything and is a prerequisite for recording Path B, personal live-rewind, and multiplayer state; **sessions/identity/portals** (spec 10); **session config model** (Q17a). These will slot in when we do build-order.
+> - **Phase 3 is now "Event Architecture (CQRS)"**, not a simple event log — see spec 04.
+> - Deferred design areas that gate some phases: participant **lifecycle (Q14)** and **staging (Q15)**.
+> - Recording phasing here still holds, but read it as the **layered A+B+C capture (Q1)**: composite + ISO tracks + event log, not a single composite.
+
 ## Guiding Principle
 
 Each phase delivers a complete, usable capability. No phase is a "setup phase" that only pays off later. Every phase should make the product noticeably better on its own.

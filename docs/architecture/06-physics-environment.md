@@ -1,5 +1,12 @@
 # 06 — Physics & Environment
 
+> **Reconciled with DECISIONS.md (2026-07-12):**
+> - **Physics is EPHEMERAL while it runs, PERSISTENT on commit (Q11b).** Live simulation (momentum, in-flight motion) is presence/broadcast; only the settled result (`core.feed.moved` final position) is logged. Don't log every physics tick.
+> - **Physics is config-gated per session (Q2/Q17)** — a room can turn physics on/off and pick a gravity mode; headless + data-driven, not hardcoded.
+> - **Keep the event set small (Q11d).** Physics adds at most a tiny number of core verbs (e.g. a settle/collide commit); resist a proliferation of physics events. Most physics stays ephemeral.
+> - **"Host-authoritative physics" below is superseded by the CQRS model (Q8)**: physics results publish as events like anything else; authority is the log, not a privileged host. Which client *runs* the sim is an implementation detail to settle later.
+> - Objects have a single-identity projection model (Q13) and everything-multiplayer interaction (Q9) — collisions/tugs between participants' feeds are co-op by default.
+
 ## The Goal
 
 The canvas should feel physical. Objects have weight, momentum, and presence. Interactions have consequence — dragging a tile feels like moving something, not just updating coordinates. The environment responds to what's happening: active areas glow, collisions ripple, idle objects settle.

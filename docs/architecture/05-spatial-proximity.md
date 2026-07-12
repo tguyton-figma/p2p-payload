@@ -4,6 +4,12 @@
 
 Distance on the canvas is not just layout — it's a dimension of the experience. Close things are loud, clear, vivid, and interactive. Far things are quiet, blurred, ambient, and observational. Moving closer to someone is a meaningful action, like walking across a room.
 
+> **Reconciled with DECISIONS.md (2026-07-12):**
+> - **Listener anchor = the participant's identity position** (the hand-cursor anchor / their feed), and under **`renderAs(X)` / spectating / follow (Q2, spec 09)** the listener follows X. So "whose ears" is the perspective primitive — the recorder view and a live spectator compute the same mix for X. (Resolves open question 1 below.)
+> - **Proximity config is part of SESSION CONFIG (Q17a)**, not just "room metadata" — per-session defaults with per-participant overrides, consistent with the headless/config-driven model (Q2).
+> - **Recordings DO capture proximity effects** — the recorder renders our own canvas app server-side (spec 08), so CSS proximity visuals + the spatial mix appear in the recording exactly as rendered for the recorded perspective. (Resolves open question 2 below; the old Canvas-2D limitation is gone with the client recorder.)
+> - `.media-node` here is the **feed projection** of an identity (Q13); the same distance math also drives cursor-to-cursor awareness (spec 02).
+
 ## Spatial Audio
 
 ### Architecture
@@ -182,9 +188,9 @@ Host can adjust these via session settings. Changes broadcast via room metadata 
 
 ## Open Questions
 
-1. **Listener position**: Is the local participant's *tile* position the right anchor, or should it be their *cursor* position? Tile makes audio stable; cursor makes it dynamic (audio shifts as you move your mouse). Tile position seems more natural — you "are" where your tile is.
+1. **Listener position** → RESOLVED: the anchor is the participant's identity position, following `renderAs(X)`/focus (see banner). Sub-question remaining: is that identity position the *feed* location or the *hand-cursor* location when the two diverge? (Lean: identity/feed for stability; revisit.)
 
-2. **Visual effects on recording**: The off-screen Canvas 2D recorder doesn't see CSS effects. Should the recording show proximity effects? If so, we need to implement them in the draw loop. If not, recordings show all feeds at full clarity regardless of canvas distance.
+2. **Visual effects on recording** → RESOLVED: yes — the server-side recorder renders our app, so effects are captured (see banner).
 
 3. **New participant positioning**: When someone joins, where do they appear? If they spawn far from everyone, they start in silence. Should new participants auto-place near the cluster, or at a fixed "lobby" position?
 
