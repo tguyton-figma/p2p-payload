@@ -1,133 +1,82 @@
 'use client'
 
-import { memo, useEffect, useState } from 'react'
-import { ParticipantTile } from '@livekit/components-react'
+import { memo, useState } from 'react'
+import { ParticipantTile, useTrackToggle } from '@livekit/components-react'
 import type { TrackReferenceOrPlaceholder } from '@livekit/components-react'
-import { Track, TrackEvent } from 'livekit-client'
+import { Track } from 'livekit-client'
 import type { NodeProps, Node } from '@xyflow/react'
-import { mediaLabel, trackName } from './mediaTracks'
+import { extraLabel, trackName } from './mediaTracks'
 
-// A single media feed rendered as a React Flow node — the canvas's atomic unit,
-// and the single source of truth for what a participant is publishing. One node
-// maps to one LiveKit track: a camera, a screen share, or a microphone. There is
-// no privileged "primary" feed and no separate control bar — a feed exists
-// because someone added it, and its controls live on the node itself.
+// A media feed rendered as a React Flow node.
 //
-// LiveKit's <ParticipantTile> handles the video element, name label, and
-// mute/speaking indicators for video sources; audio sources render as a compact
-// card (playback is handled once by <RoomAudioRenderer> up the tree, so the card
-// never attaches audio).
+// The primary node for each participant is their camera tile — LiveKit's
+// <ParticipantTile> (video, name, mic-muted + speaking indicators), and for the
+// LOCAL participant, camera + microphone toggles right on the tile. This is the
+// familiar, unified interface: one tile per person, camera and mic together. The
+// mic control drives the participant's microphone (not this tile's video track),
+// via LiveKit's own useTrackToggle.
 //
-// For the local participant's own feeds we inject `onToggleMute` / `onRemove`
-// (mute keeps the track published; remove unpublishes it). These are never
-// serialized over the wire.
+// Extra feeds (a second camera, a screen share) are their own nodes with a remove
+// control. They never carry mic controls — the mic lives on the primary tile.
 
 export type MediaNodeData = {
   trackRef: TrackReferenceOrPlaceholder
-  // True for the local participant's own feeds — only they get controls.
+  // True for the local participant's own feeds.
   local?: boolean
+  // True for a participant's primary camera tile (the one that owns camera+mic).
+  isPrimary?: boolean
+  // Present only for the local participant's own *extra* feeds.
   onRemove?: () => void
-  onToggleMute?: () => void
 }
 
-// React Flow's Node type is generic over the data payload.
 export type MediaFlowNode = Node<MediaNodeData, 'media'>
 
-function displayName(t: TrackReferenceOrPlaceholder): string {
-  const p = t.participant
-  return (p.name && p.name.trim()) || p.identity
-}
-
-// Reactive muted state for a track reference (re-renders on mute/unmute events),
-// so an on-node mute button reflects the true state without polling.
-function useMuted(trackRef: TrackReferenceOrPlaceholder): boolean {
-  const pub = 'publication' in trackRef ? trackRef.publication : undefined
-  const [muted, setMuted] = useState(!!pub?.isMuted)
-  useEffect(() => {
-    setMuted(!!pub?.isMuted)
-    if (!pub) return
-    const update = () => setMuted(!!pub.isMuted)
-    pub.on(TrackEvent.Muted, update)
-    pub.on(TrackEvent.Unmuted, update)
-    return () => {
-      pub.off(TrackEvent.Muted, update)
-      pub.off(TrackEvent.Unmuted, update)
-    }
-  }, [pub])
-  return muted
-}
-
-function NodeControls({
-  muted,
-  onToggleMute,
-  onRemove,
-}: {
-  muted: boolean
-  onToggleMute?: () => void
-  onRemove?: () => void
-}) {
+// Camera + mic toggles for the local participant's primary tile. Uses LiveKit's
+// useTrackToggle so the mic button toggles the microphone and the camera button
+// toggles the camera — each acting on the right source, not on this tile's track.
+function LocalTileControls() {
+  const camera = useTrackToggle({ source: Track.Source.Camera })
+  const mic = useTrackToggle({ source: Track.Source.Microphone })
   return (
     <div className="media-node__controls nodrag">
-      {onToggleMute && (
-        <button
-          type="button"
-          className={`media-node__ctl${muted ? ' media-node__ctl--active' : ''}`}
-          onClick={onToggleMute}
-          title={muted ? 'Unmute' : 'Mute'}
-          aria-label={muted ? 'Unmute' : 'Mute'}
-        >
-          {muted ? '🔇' : '🎙'}
-        </button>
-      )}
-      {onRemove && (
-        <button
-          type="button"
-          className="media-node__ctl media-node__ctl--remove"
-          onClick={onRemove}
-          title="Remove this feed"
-          aria-label="Remove feed"
-        >
-          ✕
-        </button>
-      )}
+      <button
+        type="button"
+        className={`media-node__ctl${camera.enabled ? '' : ' media-node__ctl--off'}`}
+        onClick={() => void camera.toggle()}
+        disabled={camera.pending}
+        title={camera.enabled ? 'Turn camera off' : 'Turn camera on'}
+        aria-label={camera.enabled ? 'Turn camera off' : 'Turn camera on'}
+      >
+        {camera.enabled ? '🎥' : '📷'}
+      </button>
+      <button
+        type="button"
+        className={`media-node__ctl${mic.enabled ? '' : ' media-node__ctl--off'}`}
+        onClick={() => void mic.toggle()}
+        disabled={mic.pending}
+        title={mic.enabled ? 'Mute microphone' : 'Unmute microphone'}
+        aria-label={mic.enabled ? 'Mute microphone' : 'Unmute microphone'}
+      >
+        {mic.enabled ? '🎙️' : '🔇'}
+      </button>
     </div>
   )
 }
 
 function MediaNodeImpl({ data }: NodeProps<MediaFlowNode>) {
-  const { trackRef, local, onRemove, onToggleMute } = data
+  const { trackRef, local, isPrimary, onRemove } = data
   const source = trackRef.source
+  const isScreenShare = source === Track.Source.ScreenShare
   const participant = trackRef.participant
   const authenticated = participant.attributes?.authenticated === 'true'
   const [avatarFailed, setAvatarFailed] = useState(false)
-  const muted = useMuted(trackRef)
-  const label = mediaLabel(trackName(trackRef))
-
-  // Audio feed — a compact card, not a video tile.
-  if (source === Track.Source.Microphone) {
-    return (
-      <div className={`media-node media-node--audio${muted ? ' media-node--muted' : ''}`}>
-        <span className="media-node__mic" aria-hidden>
-          {muted ? '🔇' : '🎤'}
-        </span>
-        <span className="media-node__audio-label">
-          {displayName(trackRef)}
-          {label ? ` · ${label}` : ''}
-        </span>
-        {local && (
-          <NodeControls muted={muted} onToggleMute={onToggleMute} onRemove={onRemove} />
-        )}
-      </div>
-    )
-  }
-
-  const isScreenShare = source === Track.Source.ScreenShare
+  const label = extraLabel(trackName(trackRef))
 
   // For signed-in camera tiles, mount the Figma avatar ONCE and let CSS reveal it
-  // when the camera is muted — driven by the tile's reactive `data-lk-video-muted`
+  // when the camera is off — driven by the tile's reactive `data-lk-video-muted`
   // attribute. Mounting once means it loads a single time, stays browser-cached,
-  // and toggling mute never refetches or flickers. Guests / missing avatars fall
-  // back to LiveKit's placeholder (img errors → we stop rendering it).
+  // and toggling the camera never refetches or flickers. Guests / missing avatars
+  // fall back to LiveKit's placeholder (img errors → we stop rendering it).
   const showAvatar = !isScreenShare && authenticated && !avatarFailed
 
   return (
@@ -151,7 +100,22 @@ function MediaNodeImpl({ data }: NodeProps<MediaFlowNode>) {
         />
       )}
       {label && <span className="media-node__badge">{label}</span>}
-      {local && <NodeControls muted={muted} onToggleMute={onToggleMute} onRemove={onRemove} />}
+      {/* Local primary camera tile → unified camera + mic controls. */}
+      {local && isPrimary && !isScreenShare && <LocalTileControls />}
+      {/* Local extra feed (second camera / screen share) → remove. */}
+      {local && onRemove && (
+        <div className="media-node__controls nodrag">
+          <button
+            type="button"
+            className="media-node__ctl media-node__ctl--remove"
+            onClick={onRemove}
+            title="Remove this feed"
+            aria-label="Remove feed"
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   )
 }

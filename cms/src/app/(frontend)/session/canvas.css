@@ -214,8 +214,8 @@ button.session-canvas__record--active:hover {
   pointer-events: none;
 }
 
-/* On-node controls (mute + remove) for your own feeds. Revealed on hover so they
-   don't clutter the tile; always visible while a feed is muted. */
+/* On-node controls (camera/mic toggles on your primary tile, or a remove ✕ on an
+   extra feed). Revealed on hover so they don't clutter the tile. */
 .media-node__controls {
   position: absolute;
   top: 0.35rem;
@@ -227,8 +227,7 @@ button.session-canvas__record--active:hover {
   transition: opacity 0.12s ease;
 }
 
-.media-node:hover .media-node__controls,
-.media-node--muted .media-node__controls {
+.media-node:hover .media-node__controls {
   opacity: 1;
 }
 
@@ -254,8 +253,13 @@ button.session-canvas__record--active:hover {
   color: #fff;
 }
 
-/* Muted mic/camera control reads red. */
-.media-node__ctl--active {
+.media-node__ctl:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* A camera or mic that is currently OFF reads red. */
+.media-node__ctl--off {
   background: rgba(60, 20, 20, 0.9);
   border-color: #7f1d1d;
   color: #fca5a5;
@@ -265,45 +269,6 @@ button.session-canvas__record--active:hover {
   background: #4c1d1d;
   border-color: #b91c1c;
   color: #fff;
-}
-
-/* Audio card dims a touch while muted. */
-.media-node--audio.media-node--muted {
-  opacity: 0.7;
-}
-
-/* Audio-only feed — a compact card (matches AUDIO_W/AUDIO_H in the recorder). */
-.media-node--audio {
-  position: relative;
-  width: 220px;
-  height: 72px;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0 0.75rem;
-  border: 1px solid #262626;
-  border-radius: 0.75rem;
-  background: #141417;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-  cursor: grab;
-}
-
-.media-node--audio:active {
-  cursor: grabbing;
-}
-
-.media-node__mic {
-  font-size: 1.25rem;
-  flex: none;
-}
-
-.media-node__audio-label {
-  min-width: 0;
-  font-size: 0.85rem;
-  color: #e4e4e7;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* --- Bottom dock: Add-feed control + Leave --------------------------------- */

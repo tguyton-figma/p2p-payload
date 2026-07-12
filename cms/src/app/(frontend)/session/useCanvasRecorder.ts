@@ -9,7 +9,7 @@ import type { MediaFlowNode } from './MediaNode'
 import type { FigmaEmbedFlowNode } from './FigmaEmbedNode'
 import { isMediaNode, isFigmaEmbedNode } from './sessionNodes'
 import type { SessionFlowNode } from './sessionNodes'
-import { isAudioSource, mediaLabel, trackName } from './mediaTracks'
+import { extraLabel, isAudioSource, trackName } from './mediaTracks'
 
 /**
  * useCanvasRecorder — records the session canvas in the host's browser.
@@ -394,7 +394,7 @@ export function useCanvasRecorder(
           ctx.fillStyle = '#141417'
           ctx.fill()
           ctx.restore()
-          const label = mediaLabel(trackName(node.data.trackRef))
+          const label = extraLabel(trackName(node.data.trackRef))
           const name = displayName(node.data.trackRef.participant)
           const text = `🎤  ${name}${label ? ` · ${label}` : ''}`
           ctx.fillStyle = '#e4e4e7'
