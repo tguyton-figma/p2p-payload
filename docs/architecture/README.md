@@ -28,6 +28,7 @@ Living specifications for the next generation of the p2p-payload canvas experien
 | 09 | [Recording Perspectives](09-recording-perspectives.md) | Draft | Multi-POV capture — any participant records their perspective; `renderAs()` primitive; spectating |
 | 10 | [World & Identity](10-world-and-identity.md) | Draft | Ephemeral sessions, config + semantic handles, portals/sub-sessions, Accounts-bound identity, arrival |
 | — | [Technical Report](TECHNICAL-REPORT.md) | Synthesis | Unified implementation blueprint across all specs; current→target mapping; 21 gaps worked through (§12) |
+| — | [Production Plan](PRODUCTION-PLAN.md) | **Active** | Sequenced build order (resolves Q10); 11 milestones from cursor presence through environmental polish |
 
 ## Decision Log
 
