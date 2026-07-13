@@ -27,10 +27,13 @@ Living specifications for the next generation of the p2p-payload canvas experien
 | 08 | [Recording & Muxing](08-recording-muxing.md) | Draft | Server-side composite egress, progressive/durable capture, enrichment, 4K |
 | 09 | [Recording Perspectives](09-recording-perspectives.md) | Draft | Multi-POV capture — any participant records their perspective; `renderAs()` primitive; spectating |
 | 10 | [World & Identity](10-world-and-identity.md) | Draft | Ephemeral sessions, config + semantic handles, portals/sub-sessions, Accounts-bound identity, arrival |
+| — | [Technical Report](TECHNICAL-REPORT.md) | Synthesis | Unified implementation blueprint across all specs; current→target mapping; 21 gaps worked through (§12) |
 
 ## Decision Log
 
-**[DECISIONS.md](DECISIONS.md) is the authoritative source of truth.** It records every settled architecture decision (Q1–Q20 and spawned sub-decisions) with rationale. When a spec and DECISIONS.md disagree, DECISIONS.md wins — the specs are being reconciled to it over time.
+**[DECISIONS.md](DECISIONS.md) is the authoritative source of truth.** It records every settled architecture decision (Q1–Q20, Round 3 implementation synthesis, and spawned sub-decisions) with rationale. When a spec and DECISIONS.md disagree, DECISIONS.md wins — the specs are being reconciled to it over time.
+
+**[TECHNICAL-REPORT.md](TECHNICAL-REPORT.md)** synthesizes all specs into one implementation blueprint and carries the full rationale for the Round 3 gap resolutions inline.
 
 ## Current Stack
 

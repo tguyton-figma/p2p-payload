@@ -2,6 +2,8 @@
 
 Working log. We answer one question at a time. Sub-questions spawned by an answer are appended under it.
 
+> **Round 3 (2026-07-13)** worked through the 21 implementation gaps identified in [TECHNICAL-REPORT.md](TECHNICAL-REPORT.md) §12. See the [Round 3 section](#round-3--implementation-synthesis-2026-07-13) below. The technical report carries the full rationale inline; this log records the decisions.
+
 ## Status
 
 | # | Question | Status |
@@ -26,8 +28,8 @@ Focus shifts from stack to the actual target-state experience. Guided by the **d
 | 11 | Actions as first-class primitives — formalize an action/verb vocabulary? | ✅ hybrid CQRS+verbs+triple; tiered core/ext; 2 planes; TS+Zod; additive-only; KEEP SMALL (a–d done) |
 | 12 | Session: ephemeral call vs persistent place? | ✅ A — ephemeral (dies when empty); history via recordings, not persistent rooms |
 | 13 | Participant embodiment & identity — one identity, how many forms? | ✅ A — single identity (bound to Payload Accounts), many projections; hand = anchor; +user memory |
-| 14 | Participant lifecycle states? | ⏸️ DEFERRED — TJ unsure; revisit after more decisions |
-| 15 | Staging as canvas presence? | ⏸️ DEFERRED — TJ wants the feature; design details TBD |
+| 14 | Participant lifecycle states? | ✅ RESOLVED in R3 — two orthogonal axes: lifecycle `away/staged/present/gone` + connectivity `online/offline`; Observing dropped |
+| 15 | Staging as canvas presence? | ✅ RESOLVED in R3 (mechanism) — click-to-spawn staging minimap; embodiment-to-others deferred |
 | 16 | Arrival & departure choreography? | ✅ A — first-class, configurable, recordable events (entrance style is data); specifics designed later |
 | 17 | Session discovery & definition? | ✅ C — config-driven visibility; hidden UUID + semantic handle/slug routing + rename redirects |
 | 18 | Session stitching & topology? | ✅ PORTALS (not edges) — linkable sessions + sub-sessions/breakouts; portal node on canvas |
@@ -206,6 +208,8 @@ During a live session, a participant can **privately scrub back through the time
 
 ## ✅ Round 2 complete (Q11–Q20). Deferred: Q10 (build order), Q14 (lifecycle), Q15 (staging). Many spawned sub-decisions (Q2a–d, Q3a–e, Q6a, Q8a–e, Q9a–b, Q11 done, Q12a–b, Q13a–d, Q17a–e, Q18a–d, Q20a) remain for future rounds.
 
+## ✅ Round 3 complete (2026-07-13) — implementation synthesis. Resolved Q14 & Q15 (deferred from R2) plus many spawned sub-decisions (Q8a/b/c/e, Q13c, Q20a) and the 21 gaps from TECHNICAL-REPORT §12. Still open: Q10 (build order), Q3b/Gap 4 (consent filter A vs B), egress hosting (Q7). Backlogged: snapshotting (Q8e trigger noted), staging embodiment (Q15 remainder).
+
 ---
 
 ## Q1 — Recording strategy
@@ -367,3 +371,78 @@ The authority is **the durable, ordered, dedup'd event log itself** — not a si
 ## Q10 — Build order
 
 _pending_
+
+---
+
+# Round 3 — Implementation Synthesis (2026-07-13)
+
+Worked through the 21 gaps from [TECHNICAL-REPORT.md](TECHNICAL-REPORT.md) §12 (which holds full rationale). Grouped below by domain. Status: ✅ resolved · ◐ partially resolved · ⏸️ deferred.
+
+## Status
+
+| Gap | Topic | Status |
+|-----|-------|--------|
+| 1 | CQRS log technology | ✅ Payload is the durable event authority; no external log service |
+| 2 | Sequence/ordering | ✅ `(ts, actorId)` composite key; event `type` = NATS-style subject |
+| 3 | Data channel topics | ✅ Non-issue (ephemeral sessions); two topics: `presence` (L1), `events` (L2) |
+| 4 | Consent filtering | ⏸️ OPEN — Option A (mux-time) vs B (live recorder-view) documented; lean B-live / A-offline |
+| 6 | Recording storage lifecycle | ✅ Payload; 3 visibility tiers (private/org/public) + optional expiry |
+| 7 | Offline re-render pipeline | ✅ Payload Job via local API; chunked for long sessions |
+| 8 | Cursor asset pipeline | ✅ Figma-exported spritesheets (no Blender); customizable base props; custom upload deferred |
+| 9 | Identity customization | ✅ One user palette color → CSS custom property cascades to all identity UI |
+| 10 | Input & accessibility | ✅ Pointer Events API everywhere; keyboard-only + full a11y first-class |
+| 11 | Event replay / fold | ◐ Draft `SessionState` + discriminated-union fold defined; full arm coverage remains |
+| 12 | Conflict resolution | ✅ Deterministic LWW via ordering key; Zustand state; NO tick/timestep in state layer |
+| 13 | Retention/compaction | ⏸️ Snapshotting mechanism deferred; trigger noted; events never discarded |
+| 14 | Lifecycle states | ✅ Two orthogonal axes: `away/staged/present/gone` + `online/offline`; Observing dropped |
+| 15 | New-participant positioning | ✅ Click-to-spawn on staging minimap; spawn = join; unifies Gaps 15+17 |
+| 16 | Physics replay | ✅ Log outcomes as authoritative position data; never re-simulate |
+| 17 | Staging experience | ◐/⏸️ Mechanism resolved (via Gap 15); embodiment-to-others backlogged |
+| 18 | (see Gap 14) | ✅ Merged into Gap 14 resolution |
+| 19 | Portal handoff latency | ✅ Video-game transition cards (progress bar + tips) + choreography; custom cards backlogged |
+| 20 | Personal live rewind | ✅ Scoped: event-log/canvas-state rewind first; historical media later |
+| 21 | Expression system | ✅ Emergent condition-triggered: bump/rest/sleep/wave; sprite registry + procedural primitives |
+
+## Event log & CQRS (Gaps 1, 2, 3, 12, 13) — resolves Q8a, Q8b, Q8c, Q8e
+
+- **Q8a/Q8b — transport & source of truth**: The append-only **Payload `session-events` collection IS the durable authority** — no NATS/JetStream or other external log service. LiveKit reliable data channel handles real-time fanout; Payload is the durable, queryable store (not merely a projection of some other log). Proven pattern in prior TJ projects; immutability + rich fields/hooks shaped to our needs; multiple log collections by type if useful.
+- **Q2 ordering**: no sequence-assigning scribe needed. Fine-grained **timestamp + `actorId`** as a composite sort key (collisions effectively impossible at our 0.1–5 Hz event rates). Event `type` doubles as a **NATS-style subject** (dot-namespaced) for efficient prefix queries (`core.recording.*`).
+- **Q8c — conflict/authority**: deterministic **last-write-wins** via the ordering key — all clients fold the same events in the same order → convergence. No OT/CRDT. Contested *continuous* interactions (two people dragging one tile) get **product-level mechanics** (tug-of-war, two-hand confirm, reversibility) layered client-side, decided by playtest — not a data-layer concern.
+- **No tick / fixed timestep in the state layer.** Purely event-driven (event → fold → subscribers react). Concurrency resolved by ordering, not by quantizing into a global step (data-oriented-design choice). The only fixed-timestep loop is the physics integrator, scoped to physics bodies (Gap 16), never a world-tick.
+- **Client state = Zustand** (pattern-matches React Flow's internal Zustand). `subscribe()` gives pub/sub fanout to components + recorder view.
+- **Data channel topics** (Gap 3): non-issue — ephemeral sessions mean a clean cut, no mid-session migration. Two topics: `presence` (L1 lossy) and `events` (L2 reliable).
+- **Q8e — snapshots** (Gap 13): mechanism **deferred** (fold state designed serializable so it's trivial to add). When sessions get long: snapshot folded `SessionState` on a cadence into `session-snapshots`; reconstruction = latest snapshot + fold-forward. Events never discarded.
+- **Fold** (Gap 11): draft `SessionState` (monolithic, serializable, grouped sub-objects) + discriminated-union `fold(state, event)`. Menus excluded from fold state (recorder re-renders them from the event stream); consent modeled as per-participant window timeline inside each recording — the mux consent filter (Gap 4) consumes it. Full per-event arm coverage still to complete.
+
+## Recording (Gaps 4, 6, 7) — resolves Q4
+
+- **Q4 storage** (Gap 6): **Payload CMS on Figma Cloud** (no separate bucket exposed). Access via Payload access-control on `session-recordings` with three visibility tiers — **private** (creator + invited Accounts + admins), **org/domain** (same email domain), **public** (anyone with link, optional `expiresAt` reverts to private). Fields: `visibility`, `invitedAccounts`, `expiresAt`. Note: egress writes S3-compatible output → a webhook handler pulls and uploads to Payload (handoff step, not a blocker).
+- **Offline re-render** (Gap 7): a **Payload Job** (same pattern as `enrich-media`), accessing ISO tracks + event log via the local API, chunked for long sessions within Lambda timeout.
+- **Consent filtering (Gap 4) — STILL OPEN** (relates to Q3b): two documented approaches. **Option A (mux-time)**: capture everything, filter at render using consent-window events — enables retroactive consent, aligns with S3 north star, but non-consented media *is* captured. **Option B (live recorder-view)**: recorder view is consent-aware, excludes non-consented participants as it renders — stronger real-time privacy, simpler live output, but stateful recorder view and no retroactive consent. Likely resolution: **B for live composite egress, A for offline re-render** — they coexist. (This refines Q3b's earlier "do-not-capture" lean: B honors do-not-capture live; A trades it for reversibility.)
+
+## Cursor, identity, input (Gaps 8, 9, 10) — resolves Q13c
+
+- **Asset pipeline** (Gap 8): cursor spritesheets designed/exported from **Figma — no Blender / 3D toolchain**. Gesture × rotation grid → PNG/WebP atlas → Payload Media → client lookup table. Base props (tint, scale) applied at render time. Custom spritesheet upload **deferred** (easy later extension).
+- **Q13c identity color** (Gap 9): each Account sets one **personal palette** primary color → exposed as a CSS custom property (`--identity-color`) that cascades to cursor tint, focus borders, name badges, presence indicators. No per-user atlas variants; no multiple hand models for now.
+- **Input & a11y** (Gap 10): **Pointer Events API** unifies mouse/touch/stylus. **Keyboard-only is first-class** — cursor tracks focused element, radial menu operable via `/`+arrows+Enter+Esc, all nodes `Tab`-reachable, interactions have keyboard equivalents, full ARIA. Non-negotiable, designed in from the start.
+
+## Spatial, positioning, physics (Gaps 14, 15, 16, 17, 18) — resolves Q14, Q15
+
+- **Zoom as proximity axis** (Gap 14): **zoom is movement** — effective distance factors in zoom. One "effective distance" scalar drives **audio + visual effects + render LOD/culling** (proximity zones double as LOD tiers; far/beyond nodes downscale, drop to avatars, unsubscribe from video). Path to 120fps with hundreds of nodes. Resolves spec 09's viewport-in-perspective question: viewport (pos + zoom) IS part of perspective. Sub-question (feel, playtest): audio listener = viewport (eyes/ears) vs tile (body/source); lean decouple.
+- **Q15 positioning** (Gap 15): **click-to-spawn on a staging minimap** — spawn position is a deliberate choice, spawning *is* joining. Staging user joins as a **data-only observing participant** (reuses "recorder is a participant"), views a config-gated live minimap (fold state + presence, no full video), clicks a location → `core.participant.arrived {position}` → Staging→Present. Unifies positioning + staging + arrival choreography (Q16). Canvas-as-world-map: minimap doubles as in-session navigation; portals surface as map locations. Privacy-gated by visibility tier; consumes a LiveKit slot (fine at our scale).
+- **Q14 lifecycle** (Gap 18): untangled the grammar (states are conditions, one register; transitions are the past-tense events `arrived`/`departed`). **Two orthogonal axes** — lifecycle `away → staged → present → gone` and connectivity `online | offline`. Meaningful cell `present`+`offline` = connection dropped (tile greys, reconnect restores). Maps to LiveKit `reconnecting`/`reconnected`. **Observing dropped** (unmotivated).
+- **Q15 remainder** (Gap 17): staging *mechanism* resolved above; **embodiment-to-others** (what present participants see of a staging user — silhouettes vs invisible) **backlogged**. Near-term: staging users invisible until spawn.
+- **Physics replay** (Gap 16): **log outcomes as authoritative position data** (`core.feed.settled`/`collided` carry final `{x,y}`); replay/re-render plays back recorded positions, never re-simulates → sidesteps float non-determinism. Physics integrator's fixed timestep stays confined to the live client.
+
+## Topology, time, expression (Gaps 19, 20, 21) — resolves Q20a, refines Q19
+
+- **Q18c portal handoff** (Gap 19): masked by **video-game transition cards** — beautiful loading screen with a **real progress bar** + hints/tips/shortcuts, which absorbs variable join latency far better than a fixed-length animation. Sequence: departure choreography → transition card (room handoff underneath) → arrival choreography. Pre-connection is an optional optimization under the card. App-default cards ship; **custom transition cards backlogged** (compose nested sessions with bespoke screens).
+- **Q20a rewind** (Gap 20): **scoped to event-log/canvas-state rewind first** — scrub the fold state (positions, arrivals, menu actions), reconstructed from event log + snapshots; nearly free. Historical **media** playback deferred to the recording pipeline. During rewind: stay `present` with a `rewinding` mode flag (subtle live-tile indicator), live audio keeps running, private/client-only (emits no events).
+- **Q19 expressions** (Gap 21): refined to **emergent, condition-triggered** (not manually-invoked emotes) — fits "cursor IS the interface." **Core set (4)**: **bump** (cursor collision), **rest** (short idle), **sleep** (long idle), **wave** (rapid shake). Detection on ephemeral L1 motion; recognized expression fires as a **logged core event** so it's replayable (straddle rule) — bump/wave = point events (`core.cursor.bumped`/`waved`), rest/sleep = bracket enter/exit events. Rendering = two composable layers: **spritesheet/GIF registry** + **procedural math primitives**. `ext.*` long tail (custom emotes) registers own assets, degrades gracefully. Drops manually-invoked high-five/ping/emoji from *core*.
+
+## Still open after Round 3
+
+- **Gap 4 / Q3b — consent filtering A vs B**: deliberately left open; both documented.
+- **Q7 — egress hosting**: LiveKit Cloud vs self-hosted (Railway) still undecided; most concrete near-term blocker for Phase R.
+- **Q10 — build order**: still deferred.
+- **Backlog**: snapshotting (Q8e), staging embodiment (Q15 remainder), custom cursor/transition-card upload.
